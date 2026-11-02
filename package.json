@@ -1,0 +1,25 @@
+{
+  "name": "crave",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CRAVE — Watch it. Crave it. Order it.",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:db": "bash supabase/tests/run.sh",
+    "dev:api": "npm run dev -w @crave/api",
+    "dev:web": "npm run dev -w @crave/web",
+    "dev:mobile": "npm run start -w @crave/mobile"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "pg": "^8.23.1"
+  }
+}

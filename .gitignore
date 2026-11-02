@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.expo/
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+ios/
+android/
+.DS_Store
+supabase/.temp/
+supabase/tests/.pgdata/
