@@ -327,8 +327,9 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       if (decision === 'publish') {
         if (!v.storage_path) return 'missing_upload';
         // Copy the private upload to the public playback bucket. A streaming provider (HLS) replaces this step later.
-        const dest = `${videoId}.mp4`;
-        await admin.storage.from('video-playback').remove([dest]); // copy() does not overwrite
+        // Keep the original container (.mov from iPhones, .mp4 elsewhere); both play in the app.
+        const dest = `${videoId}.${v.storage_path.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4'}`;
+        await admin.storage.from('video-playback').remove([`${videoId}.mp4`, `${videoId}.mov`]); // copy() does not overwrite
         const { error: cpErr } = await admin.storage.from('video-uploads').copy(v.storage_path, dest, { destinationBucket: 'video-playback' });
         if (cpErr) return /not.?found/i.test(cpErr.message) ? 'missing_upload' : Promise.reject(new Error(`publish copy: ${cpErr.message}`));
         update.playback_url = admin.storage.from('video-playback').getPublicUrl(dest).data.publicUrl;
@@ -336,7 +337,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
         update.published_at = new Date().toISOString();
       } else {
         update.status = decision === 'reject' ? 'rejected' : 'removed';
-        if (v.status === 'published') await admin.storage.from('video-playback').remove([`${videoId}.mp4`]);
+        if (v.status === 'published') await admin.storage.from('video-playback').remove([`${videoId}.mp4`, `${videoId}.mov`]);
       }
       const { error } = await admin.from('videos').update(update).eq('id', videoId);
       if (error) throw new Error(`moderate: ${error.message}`);
