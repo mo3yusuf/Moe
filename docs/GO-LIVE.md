@@ -17,22 +17,26 @@ You'll create two free accounts. Claude does the rest.
    - Region: **Sydney** (closest to Brisbane).
    - Plan: **Free**.
 3. Wait for it to finish setting up (a couple of minutes).
-4. Collect these values — you'll paste them into **Claude's environment settings**, never into the chat:
+4. Keep these values handy (a notes app is fine — never paste them into the chat):
 
-| Name to use | Where to find it in Supabase |
-|---|---|
-| `SUPABASE_URL` | Project Settings → API → **Project URL** (looks like `https://abcd1234.supabase.co`) |
-| `SUPABASE_ANON_KEY` | Project Settings → API Keys → **anon / public** key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API Keys → **service_role** key (secret — keep it private) |
-| `SUPABASE_ACCESS_TOKEN` | Your avatar (top right) → **Account preferences** → **Access Tokens** → **Generate new token**, name it `claude` |
+| Name | Where to find it in Supabase | Used in |
+|---|---|---|
+| `SUPABASE_URL` | Your project address, e.g. `https://abcd1234.supabase.co` (the code after `/project/` in the dashboard link) | Claude + Render |
+| `SUPABASE_ANON_KEY` | ⚙ Project Settings → API Keys → **anon / public** (or **Publishable key**) | Render |
+| `SUPABASE_SERVICE_ROLE_KEY` | ⚙ Project Settings → API Keys → **service_role** (or **Secret key**) — keep it private | Render |
+| Access token | Your avatar (top right) → **Account preferences** → **Access Tokens** → **Generate new token**, name `claude`, scoped to your project with full permissions | Claude only |
 
-### Add them to Claude
-1. In this Claude session, open the **environment menu in the title bar** → **Edit**.
-2. Under **Network secrets** (or Environment variables), add each of the four values above using exactly those names.
-3. Under **Network access → Allowed domains**, add these two (leave "Allow package managers" ticked):
-   - `api.supabase.com`
-   - your project's address without `https://`, e.g. `abcd1234.supabase.co`
-4. Save, then **start a new session** and tell Claude "Supabase is ready".
+### Give Claude the access token
+1. In the Claude app, open the **Environment** panel on the right → ⚙ next to the environment name → **Add secret**.
+2. Fill in:
+   - **Secret type:** Bearer
+   - **Allowed websites:** `api.supabase.com`
+   - **Header name** `Authorization`, **Prefix** `Bearer`, **Value**: paste the access token
+3. Save. In the environment's **Network access → Allowed domains**, make sure `api.supabase.com` is listed (leave "Allow package managers" ticked).
+4. Add an environment variable `SUPABASE_URL` with your project address (it isn't secret).
+5. **Start a new session** and tell Claude "Supabase is ready".
+
+The anon and service_role keys don't go into Claude — you'll paste them into Render in Step 2.
 
 Claude will then set up the database (tables, security rules, video storage) and check everything worked.
 
