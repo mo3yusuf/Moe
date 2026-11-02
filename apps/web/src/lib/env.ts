@@ -3,4 +3,5 @@ export const publicEnv = {
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
 };
 export const isConfigured = Boolean(publicEnv.supabaseUrl && publicEnv.supabaseAnonKey);
-export const apiUrl = (process.env.CRAVE_API_URL ?? '').replace(/\/$/, '');
+const rawApi = (process.env.CRAVE_API_URL ?? '').replace(/\/$/, '');
+export const apiUrl = rawApi && !/^https?:\/\//.test(rawApi) ? `https://${rawApi}` : rawApi;

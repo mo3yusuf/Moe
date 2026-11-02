@@ -1,0 +1,93 @@
+# Render Blueprint: deploys CRAVE's web app, API and business dashboard from this repository.
+# In Render: New → Blueprint → choose this repo. You will be asked for the values marked `sync: false`.
+# Free instances sleep when idle (first visit after a quiet period takes ~1 minute). Upgrade the API
+# to a paid instance before real traffic.
+services:
+  # Backend API (feed ranking, events, moderation, ordering when enabled)
+  - type: web
+    name: crave-api
+    runtime: node
+    plan: free
+    region: singapore          # closest Render region to Brisbane
+    buildCommand: npm ci --include=dev
+    startCommand: npm run start -w @crave/api
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY     # secret — server only
+        sync: false
+      - key: PAYMENTS_MODE
+        value: disabled                    # engagement pilot: no ordering yet
+      - key: DELIVERY_PROVIDER
+        value: none
+      - key: CORS_ORIGINS
+        value: http://localhost:8081
+      - key: APP_HOST
+        fromService: { type: web, name: crave-app, property: host }
+      - key: DASHBOARD_HOST
+        fromService: { type: web, name: crave-dashboard, property: host }
+      - key: WEB_BASE_URL
+        fromService: { type: web, name: crave-dashboard, property: host }
+
+  # The CRAVE app for phones, as an installable web app
+  - type: web
+    name: crave-app
+    runtime: static
+    buildCommand: >-
+      npm ci --include=dev &&
+      cd apps/mobile &&
+      EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL
+      EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+      EXPO_PUBLIC_API_URL=$API_HOST
+      EXPO_PUBLIC_ORDERING_ENABLED=false
+      EXPO_OFFLINE=1 npx expo export --platform web --output-dir dist
+    staticPublishPath: ./apps/mobile/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY            # public by design (protected by row-level security)
+        sync: false
+      - key: API_HOST
+        fromService: { type: web, name: crave-api, property: host }
+
+  # Restaurant & admin dashboard (approve videos here)
+  - type: web
+    name: crave-dashboard
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: >-
+      npm ci --include=dev &&
+      NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+      NEXT_TELEMETRY_DISABLED=1 npm run build -w @crave/web
+    startCommand: >-
+      NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+      npm run start -w @crave/web
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: CRAVE_API_URL
+        fromService: { type: web, name: crave-api, property: host }

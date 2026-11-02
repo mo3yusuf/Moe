@@ -1,10 +1,13 @@
 import { createUploadTask, FileSystemUploadType } from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import { config } from '@/lib/config';
 import { supabase } from '@/lib/supabase';
 
 export interface VideoUploadInput {
   fileUri: string;
   mimeType: 'video/mp4' | 'video/quicktime';
+  /** Web only: the picked file (browsers can't stream from a file path). */
+  webFile?: Blob | null;
   durationMs: number;
   caption: string;
   tag: { restaurantId: string; menuItemId: string } | null;
@@ -57,20 +60,34 @@ export async function uploadVideo(input: VideoUploadInput, onProgress: (fraction
   if (error || !video) throw new Error(error?.message ?? 'Could not start upload');
 
   const path = `${userId}/${video.id}.${input.mimeType === 'video/mp4' ? 'mp4' : 'mov'}`;
-  const task = createUploadTask(`${config.supabaseUrl}/storage/v1/object/video-uploads/${path}`, input.fileUri, {
-    httpMethod: 'POST',
-    uploadType: FileSystemUploadType.BINARY_CONTENT,
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: config.supabaseAnonKey,
-      'Content-Type': input.mimeType,
-      'x-upsert': 'false',
-    },
-  }, (p) => onProgress(p.totalBytesExpectedToSend ? p.totalBytesSent / p.totalBytesExpectedToSend : 0));
-  const result = await task.uploadAsync();
-  if (!result || result.status >= 300) {
+  let ok = false;
+  let status: number | string = 'network error';
+  if (Platform.OS === 'web') {
+    // Browsers: upload the File/Blob directly (no progress events from supabase-js; show indeterminate).
+    onProgress(0.05);
+    const blob = input.webFile ?? (await (await fetch(input.fileUri)).blob());
+    const { error: upErr } = await supabase.storage.from('video-uploads').upload(path, blob, { contentType: input.mimeType, upsert: false });
+    ok = !upErr;
+    status = upErr?.message ?? 200;
+    onProgress(1);
+  } else {
+    const task = createUploadTask(`${config.supabaseUrl}/storage/v1/object/video-uploads/${path}`, input.fileUri, {
+      httpMethod: 'POST',
+      uploadType: FileSystemUploadType.BINARY_CONTENT,
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: config.supabaseAnonKey,
+        'Content-Type': input.mimeType,
+        'x-upsert': 'false',
+      },
+    }, (p) => onProgress(p.totalBytesExpectedToSend ? p.totalBytesSent / p.totalBytesExpectedToSend : 0));
+    const result = await task.uploadAsync();
+    ok = !!result && result.status < 300;
+    status = result?.status ?? 'network error';
+  }
+  if (!ok) {
     await supabase.from('videos').delete().eq('id', video.id);
-    throw new Error(`Upload failed (${result?.status ?? 'network error'})`);
+    throw new Error(`Upload failed (${status})`);
   }
 
   const { error: submitErr } = await supabase.from('videos')

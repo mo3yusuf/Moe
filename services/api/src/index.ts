@@ -27,8 +27,9 @@ const app = createApp({
   payments,
   delivery,
   stripeOnBehalfOf: env.STRIPE_ON_BEHALF_OF === 'true',
-  webBaseUrl: env.WEB_BASE_URL,
-  corsOrigins: env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+  webBaseUrl: /^https?:\/\//.test(env.WEB_BASE_URL) ? env.WEB_BASE_URL : `https://${env.WEB_BASE_URL}`,
+  corsOrigins: [...env.CORS_ORIGINS.split(','), env.APP_HOST, env.DASHBOARD_HOST]
+    .map((s) => (s ?? '').trim()).filter(Boolean).map((s) => (/^https?:\/\//.test(s) ? s : `https://${s}`)),
 });
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {

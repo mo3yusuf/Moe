@@ -9,7 +9,18 @@ import { MAX_DURATION_MS, uploadVideo, validateUpload } from '@/features/upload/
 import { config } from '@/lib/config';
 import { colors, radius, space } from '@/theme/tokens';
 
-interface Picked { uri: string; durationMs: number; mimeType: 'video/mp4' | 'video/quicktime' }
+interface Picked { uri: string; durationMs: number; mimeType: 'video/mp4' | 'video/quicktime'; webFile?: Blob | null }
+
+/** Browsers don't always report a picked video's length; read it from the file's metadata. */
+function webVideoDurationMs(uri: string): Promise<number> {
+  return new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => resolve(Math.round(v.duration * 1000));
+    v.onerror = () => resolve(0);
+    v.src = uri;
+  });
+}
 
 export default function Create() {
   const router = useRouter();
@@ -30,14 +41,19 @@ export default function Create() {
     const res = fromCamera ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
     const asset = res.canceled ? null : res.assets[0];
     if (!asset) return;
-    const mimeType = asset.mimeType === 'video/quicktime' || asset.uri.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
-    const durationMs = asset.duration ?? 0; // milliseconds
-    setPicked({ uri: asset.uri, durationMs, mimeType });
+    const type = asset.mimeType ?? '';
+    if (type && !['video/mp4', 'video/quicktime'].includes(type)) {
+      return Alert.alert('Unsupported video', 'Please use an MP4 or MOV video (the normal format from iPhone and Android cameras).');
+    }
+    const mimeType = type === 'video/quicktime' || asset.uri.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
+    let durationMs = asset.duration ?? 0; // milliseconds
+    if (!durationMs && Platform.OS === 'web') durationMs = await webVideoDurationMs(asset.uri);
+    setPicked({ uri: asset.uri, durationMs, mimeType, webFile: (asset as { file?: Blob }).file ?? null });
   }
 
   async function submit() {
     if (!picked) return;
-    const input = { fileUri: picked.uri, mimeType: picked.mimeType, durationMs: picked.durationMs, caption, tag: tag ? { restaurantId: tag.restaurantId, menuItemId: tag.menuItemId } : null,
+    const input = { fileUri: picked.uri, mimeType: picked.mimeType, webFile: picked.webFile, durationMs: picked.durationMs, caption, tag: tag ? { restaurantId: tag.restaurantId, menuItemId: tag.menuItemId } : null,
       isSponsored: sponsored, sponsorDisclosure: disclosure, allowRestaurantReuse: reuse, rightsConfirmed: rights };
     const invalid = validateUpload(input);
     if (invalid) return Alert.alert('Almost there', invalid);
@@ -65,7 +81,7 @@ export default function Create() {
           <T variant="title" accessibilityRole="header">Share a food video</T>
           {!picked ? (
             <Card>
-              <T muted>Film a meal you loved at a Brisbane restaurant (up to 3 minutes). Only upload videos you made yourself — don’t copy TikTok or Instagram posts.</T>
+              <T muted>Film a meal you loved at a Brisbane restaurant (up to 3 minutes). Only upload videos you made yourself — don’t copy TikTok or Instagram posts. Mention the restaurant and suburb in your caption.</T>
               <Button title="Record a video" onPress={() => pick(true)} />
               <Button title="Choose from library" variant="secondary" onPress={() => pick(false)} />
             </Card>

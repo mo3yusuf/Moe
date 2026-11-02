@@ -11,7 +11,8 @@ export const supabase: SupabaseClient | null = config.demoMode
         storage: Platform.OS === 'web' ? undefined : secureStorage,
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: false,
+        // On web, email confirmation / password reset links land back on the site with the session in the URL.
+        detectSessionInUrl: Platform.OS === 'web',
       },
     });
 
