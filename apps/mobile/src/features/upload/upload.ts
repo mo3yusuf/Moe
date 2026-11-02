@@ -34,7 +34,8 @@ export function missingForUpload(i: Pick<VideoUploadInput, 'caption' | 'duration
 export function validateUpload(i: VideoUploadInput): string | null {
   if (i.caption.trim().length < 3) return 'Add a caption saying what you ate and where.';
   if (!i.rightsConfirmed) return 'Please confirm you own or have permission to share this video.';
-  if (i.durationMs < MIN_DURATION_MS || i.durationMs > MAX_DURATION_MS) return 'Videos must be between 3 seconds and 3 minutes.';
+  // durationMs 0 = unknown (some browsers can't read it); review checks the length instead.
+  if (i.durationMs !== 0 && (i.durationMs < MIN_DURATION_MS || i.durationMs > MAX_DURATION_MS)) return 'Videos must be between 3 seconds and 3 minutes.';
   if (i.isSponsored && i.sponsorDisclosure.trim().length < 3) return 'Say who sponsored this video (e.g. “Paid partnership with …”).';
   if (i.caption.length > 500) return 'Captions are limited to 500 characters.';
   return null;
@@ -63,7 +64,7 @@ export async function uploadVideo(input: VideoUploadInput, onProgress: (fraction
     source: 'customer',
     caption: input.caption.trim() || null,
     hashtags: hashtagsOf(input.caption),
-    duration_ms: Math.round(input.durationMs),
+    duration_ms: input.durationMs ? Math.round(input.durationMs) : null,
     is_sponsored: input.isSponsored,
     sponsor_disclosure: input.isSponsored ? input.sponsorDisclosure.trim() : null,
     allow_restaurant_reuse: input.allowRestaurantReuse,

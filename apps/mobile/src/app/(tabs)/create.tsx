@@ -17,8 +17,9 @@ function webVideoDurationMs(uri: string): Promise<number> {
   return new Promise((resolve) => {
     const v = document.createElement('video');
     v.preload = 'metadata';
-    v.onloadedmetadata = () => resolve(Math.round(v.duration * 1000));
+    v.onloadedmetadata = () => resolve(Number.isFinite(v.duration) ? Math.round(v.duration * 1000) : 0);
     v.onerror = () => resolve(0);
+    setTimeout(() => resolve(0), 8000); // some browsers never fire either event
     v.src = uri;
   });
 }
@@ -49,8 +50,10 @@ export default function Create() {
       return Alert.alert('Unsupported video', 'Please use an MP4 or MOV video (the normal format from iPhone and Android cameras).');
     }
     const mimeType = type === 'video/quicktime' || asset.uri.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
-    let durationMs = asset.duration ?? 0; // milliseconds
+    // iOS/Android report milliseconds; the web picker reports SECONDS (HTMLVideoElement.duration).
+    let durationMs = Platform.OS === 'web' ? Math.round((asset.duration ?? 0) * 1000) : asset.duration ?? 0;
     if (!durationMs && Platform.OS === 'web') durationMs = await webVideoDurationMs(asset.uri);
+    // 0 = the browser couldn't tell; the length is then checked during review instead.
     setPicked({ uri: asset.uri, durationMs, mimeType, webFile: (asset as { file?: Blob }).file ?? null });
   }
 
@@ -93,7 +96,7 @@ export default function Create() {
             <View style={{ flexDirection: 'row', gap: space.md }}>
               <VideoView player={preview} style={{ width: 120, height: 213, borderRadius: radius.md, backgroundColor: colors.surface }} contentFit="cover" nativeControls={false} />
               <View style={{ flex: 1, gap: space.sm, justifyContent: 'center' }}>
-                <T muted>{Math.round(picked.durationMs / 1000)} seconds</T>
+                <T muted>{picked.durationMs ? `${Math.round(picked.durationMs / 1000)} seconds` : 'Video selected'}</T>
                 <Button title="Choose a different video" variant="secondary" onPress={() => setPicked(null)} />
               </View>
             </View>
