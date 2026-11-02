@@ -51,3 +51,29 @@ Each phase lists what was actually built, how it was verified, and what is incom
 - Ordering buttons are intentionally disabled until Phase 5.
 - Comments UI is not built yet (schema exists).
 - Streaming uses progressive MP4 from storage; HLS/adaptive bitrate needs a streaming provider before scale.
+
+## Phase 3 — Recommendation engine and taste profile
+
+### Built
+- **Rules-based ranking engine** in `@crave/core/recommend` — framework-free and behind a `Ranker` interface in the API, so an ML model can replace it later without app changes.
+  - Signal weights (all configurable): right swipe +3, left swipe −2, order +5, repeat order +7, add to basket +2.5, order click +2, menu item click +1.5, save +1.5, like +1, replay +0.8, long watch +0.5, quick skip −0.3. Ordinary viewing is neutral.
+  - Each signal spreads to the meal's attributes (restaurant, dish category, cuisine, tags, price level, creator, halal certification), decays with a 30-day half-life, and is squashed so no single action dominates. Affinities have a floor, so behaviour alone never excludes a food category.
+  - Scoring combines learned taste (shrunk for users with little history), time-of-week habits learned from orders (e.g. Friday-evening sushi, Brisbane time), explicit favourite/disliked cuisines, spice tolerance, price fit (explicit budget or learned typical spend), smoothed popularity, freshness, distance, and orderability.
+  - Hard filters: the exact video a user rejected (for 60 days), and dietary requirements the user explicitly set (matched only against restaurant declarations or verified certification; unverifiable content excluded).
+  - Exploration: every 5th slot is good, orderable content from a cuisine the user hasn't expressed a view on. Diversity: no same restaurant back-to-back and no long same-cuisine runs.
+  - Plain-language reasons ("Because you crave Japanese", "Your usual Japanese time", "Something different to try") shown in the feed.
+- **Admin-tunable weights** via `platform_settings.ranking_weights`, merged and validated (bad values ignored, never crash the feed). Model version is recorded.
+- **`user_ranking_signals()` SQL**: one feature-rich row per signal, respects the Reset My Taste Profile boundary; users can only read their own.
+- **Impression logging** (`recommendation_impressions`: request id, position, score, exploration flag, reasons, model version) — only with consent, never blocking the feed — so swipe-right rate and order conversion can be measured per model version.
+- **API**: rules ranker on `GET /v1/feed`, `GET/PUT /v1/preferences` (validated), `GET /v1/taste-profile` (what the engine has learned, without exposing restaurant/creator ids as "tastes").
+- **Mobile**: Food preferences screen (cuisines, show-me-less, explicit dietary requirements with allergen warning, spice, budget), "Your taste profile" transparency screen, reason line in the feed, optional new-user prompt.
+
+### Tested
+- Core: 25 recommendation tests on a synthetic Brisbane catalogue covering cold start, popularity, right/left swipe effects, gradual seafood reduction with the floor, quick skip vs. left swipe, orders vs. watches, repeat orders, spend learning, halal behaviour vs. no dietary inference, Brisbane timezone context, Friday-sushi boost, explicit dietary/halal filters, consent off, reset boundary, decay, exploration, determinism, diversity, and config overrides.
+- API: ranker personalisation, no logging/history without consent, rejected-video hiding, weight overrides, logging failures not breaking the feed, preference validation, taste-profile output.
+- Database: `user_ranking_signals` enrichment, ownership check, and reset boundary.
+
+### Limitations
+- The default weights are reasoned starting points, **not yet tuned on real data**. They must be evaluated during the pilot with the logged impressions (A/B by `model_version`).
+- The profile is computed per request from up to 120 days of signals — fine for a pilot; needs precomputation (`user_feature_affinities`) or caching at scale.
+- Exploration currently uses cuisine novelty only.

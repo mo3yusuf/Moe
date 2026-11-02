@@ -4,17 +4,18 @@ import { createApp } from './app';
 import { loadEnv } from './env';
 import { supabaseAuthVerifier } from './lib/auth';
 import { supabaseStore } from './lib/supabase-store';
-import { recencyRanker } from './lib/ranker';
+import { rulesRanker } from './lib/ranker';
 
 const env = loadEnv();
 const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+const store = supabaseStore(admin);
 const app = createApp({
   auth: supabaseAuthVerifier(admin),
-  store: supabaseStore(admin),
-  ranker: recencyRanker,
+  store,
+  ranker: rulesRanker(store, { onError: (e) => console.error('[crave-api] impression logging failed', e) }),
   corsOrigins: env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
 });
 

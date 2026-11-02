@@ -8,6 +8,7 @@ import type { DataStore } from './lib/store';
 import type { Ranker } from './lib/ranker';
 import { feedRoutes } from './routes/feed';
 import { eventRoutes } from './routes/events';
+import { tasteRoutes } from './routes/taste';
 import { ApiError, notFound } from './lib/errors';
 
 export interface AppDeps {
@@ -49,6 +50,7 @@ export function createApp(deps: AppDeps) {
 
   app.route('/v1', feedRoutes);
   app.route('/v1', eventRoutes);
+  app.route('/v1', tasteRoutes);
 
   app.notFound((c) => c.json({ error: { code: 'not_found', message: 'Route not found' } }, 404));
   app.onError((err, c) => {

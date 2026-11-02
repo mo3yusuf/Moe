@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { SwipeDirection } from '@crave/core';
-import { useIsFocused } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo, ActivityIndicator, Alert, AppState, FlatList, Pressable, Share, StyleSheet, View,
@@ -11,6 +11,7 @@ import { Button, DemoBanner, T } from '@/components/ui';
 import { track, watchSession } from '@/features/feed/events';
 import { FeedVideo, type InputMethod } from '@/features/feed/FeedVideo';
 import { useFeed, type FeedEntry } from '@/features/feed/use-feed';
+import { api } from '@/lib/api';
 import { config } from '@/lib/config';
 import { colors, font, HIT, space } from '@/theme/tokens';
 
@@ -25,6 +26,15 @@ export default function ForYou() {
   const [screenReader, setScreenReader] = useState(false);
   const listRef = useRef<FlatList<FeedEntry>>(null);
   const { items, loading, error, personalised, loadMore, refresh, patch } = useFeed();
+  const router = useRouter();
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (config.demoMode || !tabFocused) return;
+    api<{ profile: { onboardingCompletedAt: string | null } }>('/v1/me')
+      .then((me) => setNeedsOnboarding(!me.profile.onboardingCompletedAt))
+      .catch(() => {});
+  }, [tabFocused]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => setAppActive(s === 'active'));
@@ -150,6 +160,14 @@ export default function ForYou() {
           <T variant="heading" style={styles.headerTitle} accessibilityRole="header">For You</T>
           {personalised ? <T variant="label" style={styles.badge}>PERSONALISED</T> : null}
         </View>
+        {needsOnboarding ? (
+          <Pressable accessibilityRole="button" onPress={() => router.push('/preferences')} style={styles.onboard}>
+            <T variant="small" style={{ fontWeight: '700' }}>New here? Tell us what you crave →</T>
+            <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" hitSlop={12} onPress={() => setNeedsOnboarding(false)}>
+              <Ionicons name="close" size={18} color={colors.text} />
+            </Pressable>
+          </Pressable>
+        ) : null}
         {screenReader ? (
           <View style={styles.srNav}>
             <Pressable accessibilityRole="button" accessibilityLabel="Previous video" onPress={() => scrollTo(activeIndex - 1)} style={styles.srBtn}>
@@ -172,6 +190,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingVertical: space.sm },
   headerTitle: { ...font.heading, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 },
   badge: { color: colors.accent },
+  onboard: { marginHorizontal: space.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: space.lg, minHeight: HIT },
   srNav: { position: 'absolute', right: space.sm, top: 80, gap: space.sm },
   srBtn: { width: HIT, height: HIT, borderRadius: HIT / 2, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center' },
 });

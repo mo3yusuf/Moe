@@ -23,3 +23,9 @@ export const LAUNCH_CITY = {
 
 export const CONSENT_TYPES = ['personalisation', 'precise_location', 'marketing_email', 'marketing_push', 'analytics'] as const;
 export type ConsentType = (typeof CONSENT_TYPES)[number];
+
+/** Cuisine keys used by menus and preferences (extend as restaurants onboard). */
+export const CUISINES = [
+  'american', 'chinese', 'desserts', 'greek', 'indian', 'italian', 'japanese', 'korean', 'lebanese', 'mexican', 'thai', 'vietnamese',
+] as const;
+export const titleCase = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

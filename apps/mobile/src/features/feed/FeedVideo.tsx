@@ -225,6 +225,11 @@ function FeedVideoBase(props: FeedVideoProps) {
         {item.isSponsored ? (
           <View style={styles.sponsored}><Text style={[font.label, { color: colors.bg }]}>{item.sponsorDisclosure ?? 'Sponsored'}</Text></View>
         ) : null}
+        {item.ranking?.reasons[0] ? (
+          <Text style={[font.label, styles.shadow, { color: colors.accent }]} accessibilityLabel={`Why you're seeing this: ${item.ranking.reasons[0]}`}>
+            ✦ {item.ranking.reasons[0]}
+          </Text>
+        ) : null}
         {item.creator?.handle ? <Text style={[font.heading, styles.shadow]}>@{item.creator.handle}</Text> : null}
         {item.caption ? <Text style={[font.body, styles.shadow]} numberOfLines={2}>{item.caption}</Text> : null}
         {item.restaurant ? (

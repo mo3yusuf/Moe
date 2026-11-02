@@ -24,6 +24,8 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="preferences" options={{ headerShown: true, title: 'Food preferences' }} />
+        <Stack.Screen name="taste-profile" options={{ headerShown: true, title: 'Your taste profile' }} />
         <Stack.Screen name="cravings" options={{ headerShown: true, title: 'Your Cravings' }} />
         <Stack.Screen name="privacy" options={{ headerShown: true, title: 'Privacy & personalisation', presentation: 'modal' }} />
       </Stack.Protected>

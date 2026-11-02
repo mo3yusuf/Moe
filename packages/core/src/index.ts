@@ -5,3 +5,4 @@ export * from './swipe';
 export * from './watch';
 export * from './event-buffer';
 export * from './feed-types';
+export * from './recommend';

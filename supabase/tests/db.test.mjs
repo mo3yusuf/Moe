@@ -462,3 +462,34 @@ test('bump_video_stats is backend-only', () => tx(async (c) => {
   assert.equal(Number(s.impressions), 2);
   assert.equal(Number(s.right_swipes), 0, 'never negative');
 }));
+
+test('user_ranking_signals: own signals only, enriched with item features, respects reset', () => tx(async (c) => {
+  const u = await createUser(c, 'signals@example.com');
+  const other = await createUser(c, 'signals2@example.com');
+  await as(c, u);
+  await c.query(`insert into public.swipe_events (user_id, video_id, direction) values ($1, ${id('video-v3')}, 'right')`, [u]);
+  await c.query(`insert into public.video_interactions (user_id, video_id, event_type, watch_ms, completion_pct) values ($1, ${id('video-v1')}, 'watch', 800, 5)`, [u]);
+  await c.query(`insert into public.video_interactions (user_id, video_id, event_type) values ($1, ${id('video-v1')}, 'impression')`, [u]);
+  await c.query(`insert into public.video_likes (user_id, video_id) values ($1, ${id('video-v12')})`, [u]);
+  const oid = await makeOrder(c, u, 'placed');
+  await asSuperuser(c);
+  await c.query(`insert into public.order_items (order_id, menu_item_id, name, unit_price_cents, quantity, line_total_cents) values ($1, ${id('i-smash-classic')}, 'Classic', 1690, 1, 1690)`, [oid]);
+  await as(c, u);
+
+  const { rows } = await c.query('select * from public.user_ranking_signals($1)', [u]);
+  const kinds = rows.map((r) => r.kind).sort();
+  assert.deepEqual(kinds, ['like', 'order', 'right_swipe', 'watch'], 'impressions are not ranking signals');
+  const swipe = rows.find((r) => r.kind === 'right_swipe');
+  assert.equal(swipe.cuisine, 'japanese');
+  assert.equal(swipe.category, 'sushi');
+  const like = rows.find((r) => r.kind === 'like');
+  assert.equal(like.halal_certified, true, 'Gabba Charcoal is halal certified (demo)');
+  assert.equal(rows.find((r) => r.kind === 'order').price_cents, 1690);
+
+  const denied = await expectDenied(c, 'select * from public.user_ranking_signals($1)', [other]);
+  assert.equal(denied.error?.code, '42501');
+
+  await c.query('select public.reset_taste_profile()');
+  const after = await c.query('select kind from public.user_ranking_signals($1)', [u]);
+  assert.deepEqual(after.rows.map((r) => r.kind), [], 'order kept but ignored after reset; likes before reset ignored');
+}));

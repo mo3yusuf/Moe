@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { FeedCandidate } from '@crave/core';
+import { EMPTY_PREFERENCES, type DietaryTag, type ExplicitPreferences, type FeedCandidate, type Signal } from '@crave/core';
 import type { DataStore, MeResult } from './store';
 
 /** Maps a public.feed_candidates() row to the shared camelCase shape. */
@@ -30,7 +30,7 @@ function must<T>(res: { data: T; error: { message: string } | null }, what: stri
 
 /** Production DataStore backed by Supabase using the service role (server-side only). */
 export function supabaseStore(admin: SupabaseClient): DataStore {
-  return {
+  const store: DataStore = {
     async getMe(userId) {
       const profile = must(
         await admin.from('profiles')
@@ -138,6 +138,68 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       if (failed?.error) throw new Error(`apply events: ${failed.error.message}`);
     },
 
+    async loadRankingContext(userId, { personalised, since }) {
+      const prefsP = store.getPreferences(userId);
+      const weightsP = admin.from('platform_settings').select('value').eq('key', 'ranking_weights').maybeSingle();
+      if (!personalised) {
+        const [preferences, weights] = await Promise.all([prefsP, weightsP]);
+        return { signals: [], impressions: [], resetAt: null, preferences, weights: weights.data?.value ?? null };
+      }
+      const [preferences, weights, profile, signals, impressions] = await Promise.all([
+        prefsP, weightsP,
+        admin.from('profiles').select('taste_reset_at').eq('id', userId).maybeSingle(),
+        admin.rpc('user_ranking_signals', { p_user_id: userId, p_since: since.toISOString() }),
+        admin.from('recommendation_impressions').select('video_id, created_at').eq('user_id', userId)
+          .gte('created_at', new Date(Date.now() - 3 * 86_400_000).toISOString()).order('created_at', { ascending: false }).limit(500),
+      ]);
+      if (signals.error) throw new Error(`signals: ${signals.error.message}`);
+      return {
+        preferences,
+        weights: weights.data?.value ?? null,
+        resetAt: profile.data?.taste_reset_at ? new Date(profile.data.taste_reset_at) : null,
+        impressions: (impressions.data ?? []).map((r: any) => ({ videoId: r.video_id, at: new Date(r.created_at) })),
+        signals: (signals.data ?? []).map((r: any): Signal => ({
+          kind: r.kind, at: new Date(r.at), videoId: r.video_id, menuItemId: r.menu_item_id,
+          watchMs: r.watch_ms, completionPct: r.completion_pct,
+          item: {
+            restaurantId: r.restaurant_id, cuisine: r.cuisine, category: r.category, tags: r.tags ?? [],
+            priceLevel: r.price_level, priceCents: r.price_cents, creatorId: r.creator_id, halalCertified: !!r.halal_certified,
+          },
+        })),
+      };
+    },
+
+    async recordImpressions(userId, feedRequestId, modelVersion, rows) {
+      if (!rows.length) return;
+      const { error } = await admin.from('recommendation_impressions').insert(rows.map((r) => ({
+        user_id: userId, video_id: r.videoId, feed_request_id: feedRequestId, position: r.position,
+        score: r.score, model_version: modelVersion, is_exploration: r.exploration, reasons: r.reasons,
+      })));
+      if (error) throw new Error(`impressions: ${error.message}`);
+    },
+
+    async getPreferences(userId) {
+      const { data, error } = await admin.from('user_taste_preferences').select('*').eq('user_id', userId).maybeSingle();
+      if (error) throw new Error(`preferences: ${error.message}`);
+      if (!data) return { ...EMPTY_PREFERENCES, preferredFulfilment: null };
+      return {
+        favouriteCuisines: data.favourite_cuisines ?? [], dislikedCuisines: data.disliked_cuisines ?? [],
+        dietaryRequirements: (data.dietary_requirements ?? []) as DietaryTag[], spicePreference: data.spice_preference,
+        typicalBudgetCents: data.typical_budget_cents, preferredFulfilment: data.preferred_fulfilment,
+      };
+    },
+
+    async setPreferences(userId, p) {
+      const { error } = await admin.from('user_taste_preferences').upsert({
+        user_id: userId, favourite_cuisines: p.favouriteCuisines, disliked_cuisines: p.dislikedCuisines,
+        dietary_requirements: p.dietaryRequirements, spice_preference: p.spicePreference,
+        typical_budget_cents: p.typicalBudgetCents, preferred_fulfilment: p.preferredFulfilment,
+      });
+      if (error) throw new Error(`preferences: ${error.message}`);
+      await admin.from('profiles').update({ onboarding_completed_at: new Date().toISOString() })
+        .eq('id', userId).is('onboarding_completed_at', null);
+    },
+
     async listSaved(userId, collection) {
       const { data, error } = await admin.from('saved_meals').select('video_id, menu_item_id, created_at, collection, menu_items(name, price_cents, currency, is_available, restaurants(name))')
         .eq('user_id', userId).eq('collection', collection).order('created_at', { ascending: false }).limit(200);
@@ -150,4 +212,5 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       }));
     },
   };
+  return store;
 }
