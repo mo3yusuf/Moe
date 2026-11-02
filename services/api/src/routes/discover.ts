@@ -77,5 +77,6 @@ adminRoutes.post('/videos/:id/moderate', async (c) => {
   const result = await c.get('deps').store.moderateVideo(c.get('user').id, id.data, body.data.decision, body.data.notes ?? null);
   if (result === 'not_found') throw notFound('Video');
   if (result === 'missing_upload') throw badRequest('The video file has not finished uploading', 'missing_upload');
+  if (result === 'processing') throw badRequest('This video is still being processed — try again in a minute', 'processing');
   return c.json({ ok: true });
 });

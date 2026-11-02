@@ -16,6 +16,8 @@ import { webhookRoutes } from './routes/webhooks';
 import type { PaymentProvider } from './lib/payments';
 import type { DeliveryProvider } from './lib/delivery';
 import { creatorRoutes } from './routes/creators';
+import { muxWebhookRoutes, videoUploadRoutes } from './routes/videos';
+import type { MuxClient } from './lib/mux';
 import { clientIp, rateLimit } from './lib/rate-limit';
 import { ApiError, notFound } from './lib/errors';
 
@@ -32,6 +34,8 @@ export interface AppDeps {
   /** Set false in tests that exercise many requests. */
   rateLimits?: boolean;
   corsOrigins: string[];
+  /** Mux streaming; null = videos are served from Supabase Storage as uploaded. */
+  mux?: MuxClient | null;
   now?: () => Date;
 }
 
@@ -47,6 +51,7 @@ export function createApp(deps: AppDeps) {
 
   // Stripe webhooks: unauthenticated (signature-verified), mounted before the /v1 auth middleware.
   app.route('/webhooks', webhookRoutes);
+  app.route('/webhooks', muxWebhookRoutes);
 
   app.get('/health', (c) => c.json({ ok: true, service: 'crave-api', time: (deps.now?.() ?? new Date()).toISOString() }));
 
@@ -82,6 +87,7 @@ export function createApp(deps: AppDeps) {
   app.route('/v1', orderRoutes);
   app.route('/v1', paymentRoutes);
   app.route('/v1', creatorRoutes);
+  app.route('/v1', videoUploadRoutes);
   app.route('/v1/admin', adminPaymentRoutes);
   app.route('/v1/admin', adminRoutes);
 

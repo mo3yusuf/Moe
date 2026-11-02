@@ -27,6 +27,13 @@ services:
         value: disabled                    # engagement pilot: no ordering yet
       - key: DELIVERY_PROVIDER
         value: none
+      # Optional video streaming (mux.com). Set all three to turn it on; leave empty to use Supabase Storage.
+      - key: MUX_TOKEN_ID
+        sync: false
+      - key: MUX_TOKEN_SECRET               # secret
+        sync: false
+      - key: MUX_WEBHOOK_SECRET             # secret
+        sync: false
       - key: CORS_ORIGINS
         value: http://localhost:8081
       - key: APP_HOST

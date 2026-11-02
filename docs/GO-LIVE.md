@@ -67,6 +67,17 @@ Claude will then connect the sign-up emails to that address and test the live ap
 
 ---
 
+## Optional — Mux video streaming (faster, sharper, plays on every phone)
+
+Without Mux, videos are stored and played exactly as uploaded (big files, 50 MB upload limit on Supabase's free plan, iPhone HEVC may not play on some Android phones). With Mux, uploads go straight to Mux, which turns them into fast adaptive streams up to 1080p.
+
+1. Sign up at **mux.com**.
+2. **Settings → Access Tokens → Generate new token**: environment *Production*, permission **Mux Video (Read + Write)**. Copy the **Token ID** and **Token Secret**.
+3. **Settings → Webhooks → Create new webhook** (environment *Production*): URL `https://<your crave-api address>/webhooks/mux`. Copy its **Signing Secret**.
+4. In Render → **crave-api** → **Environment**, add `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`, `MUX_WEBHOOK_SECRET`, then **Save, rebuild and deploy**.
+
+New uploads then use Mux automatically. Videos already published keep playing from Supabase.
+
 ## Good to know
 
 - **Free plan limits:** after about 15 minutes with no visitors, the free server goes to sleep and the next visit takes about a minute to load. Before inviting lots of people, upgrade **crave-api** on Render to the cheapest paid plan (about US$7/month). Supabase's free plan pauses after a week with no activity — upgrade to Pro (about US$25/month) for a real launch.

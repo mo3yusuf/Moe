@@ -19,6 +19,10 @@ const EnvSchema = z.object({
   /** true = restaurant is the settlement merchant (on_behalf_of). Confirm with legal/accounting. */
   STRIPE_ON_BEHALF_OF: z.enum(['true', 'false']).default('true'),
   WEB_BASE_URL: z.string().default('http://localhost:3000'),
+  /** Mux streaming (optional). All three set = uploads go to Mux; otherwise Supabase Storage is used. */
+  MUX_TOKEN_ID: z.string().optional().transform((v) => v?.trim() || undefined),
+  MUX_TOKEN_SECRET: z.string().optional().transform((v) => v?.trim() || undefined),
+  MUX_WEBHOOK_SECRET: z.string().optional().transform((v) => v?.trim() || undefined),
   /** none = pickup only (default). sandbox = TEST/DEV ONLY fake partner, refused in production. */
   DELIVERY_PROVIDER: z.enum(['none', 'sandbox']).default('none'),
   DELIVERY_WEBHOOK_SECRET: z.string().min(16).optional(),

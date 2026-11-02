@@ -1,5 +1,6 @@
 import { createUploadTask, FileSystemUploadType } from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
+import { api, ApiRequestError } from '@/lib/api';
 import { config } from '@/lib/config';
 import { supabase } from '@/lib/supabase';
 
@@ -20,6 +21,21 @@ export interface VideoUploadInput {
 
 export const MAX_DURATION_MS = 180_000;
 export const MIN_DURATION_MS = 3_000;
+/** Supabase free plan's per-file limit (only applies when Mux streaming isn't configured). */
+const SUPABASE_MAX_BYTES = 50 * 1024 * 1024;
+
+/** Browser PUT with upload progress (fetch has no upload progress events). Resolves with the HTTP status. */
+function putWithProgress(url: string, body: Blob, contentType: string, onProgress: (f: number) => void): Promise<number | string> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => resolve(xhr.status);
+    xhr.onerror = () => resolve('network error');
+    xhr.send(body);
+  });
+}
 
 /** Everything still needed before an upload can be submitted (empty = ready). */
 export function missingForUpload(i: Pick<VideoUploadInput, 'caption' | 'durationMs' | 'isSponsored' | 'sponsorDisclosure' | 'rightsConfirmed'>): string[] {
@@ -71,13 +87,40 @@ export async function uploadVideo(input: VideoUploadInput, onProgress: (fraction
   }).select('id').single();
   if (error || !video) throw new Error(error?.message ?? 'Could not start upload');
 
+  // Preferred: stream through Mux (encodes to fast adaptive HLS up to 1080p, plays on every device).
+  // The API answers 503 when Mux isn't configured; then the file goes to Supabase Storage as-is.
+  let mux: { uploadUrl: string } | null = null;
+  try {
+    mux = await api<{ uploadUrl: string }>(`/v1/videos/${video.id}/upload`, { method: 'POST' });
+  } catch (e) {
+    if (!(e instanceof ApiRequestError && e.status === 503)) {
+      await supabase.from('videos').delete().eq('id', video.id);
+      throw e;
+    }
+  }
+
   const path = `${userId}/${video.id}.${input.mimeType === 'video/mp4' ? 'mp4' : 'mov'}`;
   let ok = false;
   let status: number | string = 'network error';
-  if (Platform.OS === 'web') {
+  if (mux) {
+    if (Platform.OS === 'web') {
+      const blob = input.webFile ?? (await (await fetch(input.fileUri)).blob());
+      status = await putWithProgress(mux.uploadUrl, blob, input.mimeType, onProgress);
+    } else {
+      const task = createUploadTask(mux.uploadUrl, input.fileUri, {
+        httpMethod: 'PUT', uploadType: FileSystemUploadType.BINARY_CONTENT, headers: { 'Content-Type': input.mimeType },
+      }, (p) => onProgress(p.totalBytesExpectedToSend ? p.totalBytesSent / p.totalBytesExpectedToSend : 0));
+      status = (await task.uploadAsync())?.status ?? 'network error';
+    }
+    ok = typeof status === 'number' && status < 300;
+  } else if (Platform.OS === 'web') {
     // Browsers: upload the File/Blob directly (no progress events from supabase-js; show indeterminate).
     onProgress(0.05);
     const blob = input.webFile ?? (await (await fetch(input.fileUri)).blob());
+    if (blob.size > SUPABASE_MAX_BYTES) {
+      await supabase.from('videos').delete().eq('id', video.id);
+      throw new Error('This video is over 50 MB. Please trim it or choose a shorter clip.');
+    }
     const { error: upErr } = await supabase.storage.from('video-uploads').upload(path, blob, { contentType: input.mimeType, upsert: false });
     ok = !upErr;
     status = upErr?.message ?? 200;
@@ -103,7 +146,7 @@ export async function uploadVideo(input: VideoUploadInput, onProgress: (fraction
   }
 
   const { error: submitErr } = await supabase.from('videos')
-    .update({ storage_path: path, status: 'pending_review', rights_attested_at: new Date().toISOString() })
+    .update({ storage_path: mux ? null : path, status: 'pending_review', rights_attested_at: new Date().toISOString() })
     .eq('id', video.id);
   if (submitErr) throw new Error(submitErr.message);
 
