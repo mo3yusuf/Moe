@@ -1,7 +1,8 @@
 import { formatMoney, ORDER_STATUS_LABELS, isTerminal, type OrderStatus } from '@crave/core';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Linking, ScrollView, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, ScrollView, View } from 'react-native';
+import { Alert } from '@/lib/alert';
 import { Button, Card, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { supabase } from '@/lib/supabase';

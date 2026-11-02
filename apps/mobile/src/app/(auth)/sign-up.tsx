@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
-import { Button, Card, Field, Screen, T, ToggleRow } from '@/components/ui';
+import { Button, Card, Field, MissingHint, Screen, T, ToggleRow } from '@/components/ui';
 import { useAuth } from '@/providers/auth';
 import { colors, space } from '@/theme/tokens';
 
@@ -22,7 +22,14 @@ export default function SignUp() {
 
   const emailError = email && !EMAIL_RE.test(email.trim()) ? 'Enter a valid email address' : undefined;
   const passwordError = password && password.length < 10 ? 'Use at least 10 characters' : undefined;
-  const valid = displayName.trim() && EMAIL_RE.test(email.trim()) && password.length >= 10 && ageOk && policyOk;
+  const missing = [
+    !displayName.trim() && 'Enter your name',
+    !EMAIL_RE.test(email.trim()) && 'Enter a valid email',
+    password.length < 10 && 'Choose a password of at least 10 characters',
+    !ageOk && 'Confirm you are 16 or older',
+    !policyOk && 'Agree to the Terms and Privacy Policy',
+  ].filter((m): m is string => !!m);
+  const valid = missing.length === 0;
 
   async function submit() {
     setError(null);
@@ -72,6 +79,7 @@ export default function SignUp() {
           <ToggleRow label="I agree to the Terms and Privacy Policy" description="Draft documents — pending legal review before launch." value={policyOk} onValueChange={setPolicyOk} />
 
           {error ? <T style={{ color: colors.danger }} accessibilityLiveRegion="polite">{error}</T> : null}
+          <MissingHint items={missing} />
           <Button title="Create account" onPress={submit} loading={busy} disabled={!valid} />
           <View style={{ alignItems: 'center' }}>
             <Link href="/sign-in"><T muted>Already have an account? <T style={{ color: colors.accent }}>Sign in</T></T></Link>

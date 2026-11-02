@@ -1,7 +1,8 @@
 import { formatMoney } from '@crave/core';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
+import { Alert } from '@/lib/alert';
 import { Button, Card, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { colors, space } from '@/theme/tokens';

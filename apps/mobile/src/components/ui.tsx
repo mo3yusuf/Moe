@@ -36,7 +36,9 @@ export function Button({ title, variant = 'primary', loading, disabled, icon, st
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: pressed && variant === 'primary' ? colors.accentPressed : bg, opacity: isDisabled ? 0.5 : pressed ? 0.85 : 1 },
+        // Disabled primary buttons turn grey (not just faded) so it's obvious something is still needed.
+        { backgroundColor: disabled && variant === 'primary' ? colors.surfaceRaised : pressed && variant === 'primary' ? colors.accentPressed : bg,
+          opacity: disabled ? 0.6 : loading ? 0.8 : pressed ? 0.85 : 1 },
         variant === 'danger' && { borderWidth: 1, borderColor: colors.danger },
         style,
       ]}
@@ -49,6 +51,19 @@ export function Button({ title, variant = 'primary', loading, disabled, icon, st
         </View>
       )}
     </Pressable>
+  );
+}
+
+/** "Still needed" checklist shown above a disabled button, so people can see what's missing. */
+export function MissingHint({ items }: { items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <View accessibilityLiveRegion="polite" style={{ gap: 4 }}>
+      <Text style={[font.small, { color: colors.textMuted }]}>To continue:</Text>
+      {items.map((m) => (
+        <Text key={m} style={[font.small, { color: colors.warning }]}>•  {m}</Text>
+      ))}
+    </View>
   );
 }
 

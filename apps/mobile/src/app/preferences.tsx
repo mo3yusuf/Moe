@@ -1,7 +1,8 @@
 import { ALLERGEN_LABELS, ALLERGENS, CUISINES, DIETARY_LABELS, DIETARY_TAGS, formatMoney, titleCase, type DietaryTag } from '@crave/core';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, View } from 'react-native';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { Alert } from '@/lib/alert';
 import { Chip, ChipRow } from '@/components/chips';
 import { Button, Card, T } from '@/components/ui';
 import { api } from '@/lib/api';

@@ -2,10 +2,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
-import { Button, Card, DemoBanner, Field, ListRow, Screen, T, ToggleRow } from '@/components/ui';
+import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { Alert } from '@/lib/alert';
+import { Button, Card, DemoBanner, Field, ListRow, MissingHint, Screen, T, ToggleRow } from '@/components/ui';
 import { TagPicker, type TagChoice } from '@/features/upload/tag-picker';
-import { MAX_DURATION_MS, uploadVideo, validateUpload } from '@/features/upload/upload';
+import { MAX_DURATION_MS, missingForUpload, uploadVideo, validateUpload } from '@/features/upload/upload';
 import { config } from '@/lib/config';
 import { colors, radius, space } from '@/theme/tokens';
 
@@ -32,6 +33,8 @@ export default function Create() {
   const [reuse, setReuse] = useState(false);
   const [rights, setRights] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const missing = picked ? missingForUpload({ caption, durationMs: picked.durationMs, isSponsored: sponsored, sponsorDisclosure: disclosure, rightsConfirmed: rights }) : [];
   const preview = useVideoPlayer(picked ? { uri: picked.uri } : null, (p) => { p.loop = true; p.muted = true; p.play(); });
 
   async function pick(fromCamera: boolean) {
@@ -56,7 +59,8 @@ export default function Create() {
     const input = { fileUri: picked.uri, mimeType: picked.mimeType, webFile: picked.webFile, durationMs: picked.durationMs, caption, tag: tag ? { restaurantId: tag.restaurantId, menuItemId: tag.menuItemId } : null,
       isSponsored: sponsored, sponsorDisclosure: disclosure, allowRestaurantReuse: reuse, rightsConfirmed: rights };
     const invalid = validateUpload(input);
-    if (invalid) return Alert.alert('Almost there', invalid);
+    if (invalid) return setError(invalid);
+    setError(null);
     setProgress(0);
     try {
       await uploadVideo(input, setProgress);
@@ -64,7 +68,7 @@ export default function Create() {
       setPicked(null); setCaption(''); setTag(null); setSponsored(false); setDisclosure(''); setRights(false); setReuse(false);
       router.push('/my-videos');
     } catch (e) {
-      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Please try again');
+      setError(`Upload failed: ${e instanceof Error ? e.message : 'please try again'}`);
     } finally {
       setProgress(null);
     }
@@ -96,7 +100,7 @@ export default function Create() {
           )}
           {picked ? (
             <>
-              <Field label="Caption" value={caption} onChangeText={setCaption} multiline maxLength={500} placeholder="What did you eat? Add #hashtags" style={{ minHeight: 80 }} />
+              <Field label="Caption (required)" value={caption} onChangeText={setCaption} multiline maxLength={500} placeholder="What did you eat? Add #hashtags" style={{ minHeight: 80 }} />
               <TagPicker value={tag} onChange={setTag} />
               <Card>
                 <ToggleRow label="Paid or sponsored" description="Required if you were paid, given free food or have any commercial relationship." value={sponsored} onValueChange={setSponsored} />
@@ -104,7 +108,9 @@ export default function Create() {
                 <ToggleRow label="Let the restaurant reuse this video" description="The tagged restaurant may feature it on CRAVE. You can change this later." value={reuse} onValueChange={setReuse} />
                 <ToggleRow label="I own this video" description="I filmed it or have permission, including for any music and any people who can be identified." value={rights} onValueChange={setRights} />
               </Card>
-              <Button title={progress != null ? `Uploading ${Math.round(progress * 100)}%` : 'Upload for review'} onPress={submit} loading={progress != null && progress >= 1} disabled={progress != null} />
+              <MissingHint items={missing} />
+              {error ? <T style={{ color: colors.danger }} accessibilityLiveRegion="polite">{error}</T> : null}
+              <Button title={progress != null ? 'Uploading…' : 'Upload for review'} onPress={submit} loading={progress != null} disabled={missing.length > 0} />
             </>
           ) : null}
           <Card style={{ padding: 0 }}>
