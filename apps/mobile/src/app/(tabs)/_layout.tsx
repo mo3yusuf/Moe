@@ -21,7 +21,7 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'For You', tabBarIcon: icon('flame-outline', 'flame') }} />
-      <Tabs.Screen name="discover" options={{ title: 'Discover', tabBarIcon: icon('compass-outline', 'compass') }} />
+      <Tabs.Screen name="discover" options={{ title: 'Search', tabBarIcon: icon('search-outline', 'search') }} />
       <Tabs.Screen
         name="create"
         options={{

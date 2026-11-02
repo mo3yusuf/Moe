@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { createClient } from '@supabase/supabase-js';
+import { publicBaseUrl } from '@crave/core';
 import { createApp } from './app';
 import { loadEnv } from './env';
 import { supabaseAuthVerifier } from './lib/auth';
@@ -27,9 +28,8 @@ const app = createApp({
   payments,
   delivery,
   stripeOnBehalfOf: env.STRIPE_ON_BEHALF_OF === 'true',
-  webBaseUrl: /^https?:\/\//.test(env.WEB_BASE_URL) ? env.WEB_BASE_URL : `https://${env.WEB_BASE_URL}`,
-  corsOrigins: [...env.CORS_ORIGINS.split(','), env.APP_HOST, env.DASHBOARD_HOST]
-    .map((s) => (s ?? '').trim()).filter(Boolean).map((s) => (/^https?:\/\//.test(s) ? s : `https://${s}`)),
+  webBaseUrl: publicBaseUrl(env.WEB_BASE_URL),
+  corsOrigins: [...env.CORS_ORIGINS.split(','), env.APP_HOST, env.DASHBOARD_HOST].map(publicBaseUrl).filter(Boolean),
 });
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {

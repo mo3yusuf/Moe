@@ -51,7 +51,8 @@ export default function Discover() {
   return (
     <Screen>
       <View style={{ gap: space.md, paddingTop: space.md }}>
-        <T variant="title" accessibilityRole="header">Discover</T>
+        <T variant="title" accessibilityRole="header">Search</T>
+        <T muted>Know what you want? Find a restaurant or dish by name, cuisine or suburb.</T>
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.pill, paddingHorizontal: space.lg, minHeight: HIT, gap: space.sm }}>
           <Ionicons name="search" size={18} color={colors.textMuted} />
           <TextInput value={q} onChangeText={setQ} placeholder="Sushi, burgers, West End…" placeholderTextColor={colors.textFaint}
@@ -68,7 +69,7 @@ export default function Discover() {
           data={items}
           keyExtractor={(r) => r.id}
           contentContainerStyle={{ gap: space.md, paddingVertical: space.lg }}
-          ListEmptyComponent={<T muted>No restaurants found{q ? ` for “${q}”` : ' nearby'}.</T>}
+          ListEmptyComponent={<T muted>{q ? `No restaurants found for “${q}”.` : 'Restaurants will appear here as they join CRAVE.'}</T>}
           renderItem={({ item: r }) => (
             <Pressable accessibilityRole="button" onPress={() => router.push(`/restaurant/${r.id}`)}>
               <Card>

@@ -2,13 +2,14 @@
  * Public runtime configuration. EXPO_PUBLIC_* values are compiled into the app bundle and are
  * visible to anyone — only the Supabase anon key (protected by RLS) belongs here.
  */
+import { publicBaseUrl } from '@crave/core';
+
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const stripePublishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 const orderingEnabled = process.env.EXPO_PUBLIC_ORDERING_ENABLED === 'true';
-const rawApi = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
-// Hosting platforms may provide a bare host name; assume HTTPS.
-const apiUrl = rawApi && !/^https?:\/\//.test(rawApi) ? `https://${rawApi}` : rawApi;
+// Hosting platforms may provide a bare (or private) host name; publicBaseUrl makes it reachable.
+const apiUrl = publicBaseUrl(process.env.EXPO_PUBLIC_API_URL);
 
 export const config = {
   supabaseUrl,
