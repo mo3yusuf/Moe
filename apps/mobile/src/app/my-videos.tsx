@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, FlatList, View } from 'react-native';
+import { Alert, FlatList, TextInput, View } from 'react-native';
 import { Button, Card, Field, T } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth';
@@ -20,6 +20,18 @@ export default function MyVideos() {
   const [videos, setVideos] = useState<V[]>([]);
   const [creator, setCreator] = useState<Creator | null | undefined>(undefined);
   const [handle, setHandle] = useState('');
+  const [appeal, setAppeal] = useState<Record<string, string>>({});
+  const [appealed, setAppealed] = useState<Set<string>>(new Set());
+
+  async function submitAppeal(videoId: string) {
+    if (!supabase || !uid) return;
+    const body = (appeal[videoId] ?? '').trim();
+    if (body.length < 10) return Alert.alert('Tell us more', 'Explain why the decision should change (at least 10 characters).');
+    const { error } = await supabase.from('moderation_appeals').insert({ appellant_id: uid, target_type: 'video', target_id: videoId, body });
+    if (error) return Alert.alert('Couldn’t send appeal', error.message);
+    setAppealed((s) => new Set(s).add(videoId));
+    Alert.alert('Appeal sent', 'A different reviewer will look at it and we’ll notify you of the outcome.');
+  }
 
   async function load() {
     if (!supabase || !uid) return;
@@ -86,6 +98,14 @@ export default function MyVideos() {
           <T style={{ color: v.status === 'published' ? colors.success : v.status === 'rejected' ? colors.danger : colors.warning }}>{STATUS[v.status] ?? v.status}</T>
           {v.moderation_notes && v.status !== 'published' ? <T variant="small" muted>Reviewer: {v.moderation_notes}</T> : null}
           {v.video_menu_items.map((t, i) => <T key={i} variant="small" muted>Tagged {t.menu_items?.name} — {t.status === 'approved' ? 'orderable from your video' : t.status === 'pending' ? 'awaiting restaurant approval' : t.status}</T>)}
+          {(v.status === 'rejected' || v.status === 'removed') && !appealed.has(v.id) ? (
+            <View style={{ gap: space.sm }}>
+              <TextInput value={appeal[v.id] ?? ''} onChangeText={(t) => setAppeal((a) => ({ ...a, [v.id]: t }))} placeholder="Why should this decision be reviewed?"
+                placeholderTextColor={colors.textFaint} multiline maxLength={2000} accessibilityLabel="Appeal reason"
+                style={{ color: colors.text, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: space.md, minHeight: 60 }} />
+              <Button title="Appeal decision" variant="secondary" onPress={() => submitAppeal(v.id)} />
+            </View>
+          ) : null}
           {v.status === 'published' ? <T variant="small" muted>{v.video_stats?.views_3s ?? 0} views · {v.video_stats?.right_swipes ?? 0} craves · {v.video_stats?.likes ?? 0} likes · {v.video_stats?.shares ?? 0} shares</T> : null}
         </Card>
       )}

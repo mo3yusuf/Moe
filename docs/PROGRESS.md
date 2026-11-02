@@ -125,3 +125,21 @@ Each phase lists what was actually built, how it was verified, and what is incom
 - Restaurant staff get in-app notification records only; no sound alert / printer integration for new orders.
 - Delivery is not offered (pickup only), by design until Phase 8.
 - GST treatment of the service fee and commission, tax invoices/receipts, and the agent-vs-principal model need accountant review.
+
+## Phase 6 — Restaurant and admin dashboards
+
+### Built
+- **Restaurant dashboard additions**: **Sales** (7/30/90 days: orders, food sales, CRAVE commission deductions, net, declines/cancellations, refunds, sales from videos and from creator content, daily chart and table, top items, and *which videos generated sales* with orders, revenue and craves); **Support** (tickets linked to an order number). Sales are visible to owners/managers only — staff can't see financials.
+- **Admin console**: platform overview (orders, gross order value, commission, service fees, refunds, new customers, live restaurants, % of orders started from a video, test-payment warning, and work-queue counts); **Orders** oversight with filters and partial/full refunds; **Refunds** queue (approve → queued for the payment provider, reject with reason); **Customers** search (email/name/id) with roles, orders, refunds and fraud flags; **Creators** (verification, affiliate approval with commission %); **Commission & fees** (per-restaurant rates with mandatory reason, platform default, service fee settings, change history); **Fraud flags** (run rules on demand, investigate/resolve/false-positive); **Reports & appeals** (grouped reports, remove content or dismiss, overturn/uphold appeals with notification); **Recommendation performance** per model version and exploration vs. personalised slots (crave rate, not-for-me rate, completion, order conversion within 24 h); **Support** inbox.
+- **SQL** (all admin-checked, audited): `restaurant_sales_report`, `admin_platform_metrics`, `recommendation_performance`, `run_fraud_rules` (refund abuse, order velocity, restaurant rejection rate, failed-payment bursts — flags only, never automatic blocking, de-duplicated), `admin_find_users`, `admin_create_refund` (can never exceed the amount paid), `admin_decide_refund`, `admin_resolve_report` (resolves all reports on the same item), `admin_decide_appeal`, `admin_set_setting` (whitelisted keys, validated), `admin_update_creator`, `admin_resolve_fraud_flag`.
+- **Mobile**: Report button on every video (reasons incl. misleading, undisclosed ads, food safety, copied content; reporters stay anonymous), appeals for rejected/removed videos in My videos, and uploaders are notified of moderation decisions.
+
+### Tested
+- Database (40 tests, +5): sales report totals/commission/video & creator revenue and staff exclusion; admin-only access to metrics, user lookup, settings and recommendation stats; setting validation and audit, new default commission applied to the next restaurant; partial refund cap and refund decisions; report removal resolving all reports + appeal overturn with notification; fraud rule de-duplication and resolution; creator affiliate rules.
+- Web dashboard compiles with all new routes; mobile bundles.
+
+### Limitations
+- The dashboards have not been clicked through against a live Supabase project yet.
+- Dashboards refresh on load (orders queue auto-refreshes); no realtime charts. Figures include simulated test payments until Phase 7, and card-processing fees/payouts are not yet shown.
+- Fraud rules need scheduling (pg_cron or a worker) and tuning with real data.
+- Admin access to customer data relies on role checks and the audit log; a formal access policy, staff training and least-privilege admin sub-roles (support vs. finance vs. moderation) should be added before scale.

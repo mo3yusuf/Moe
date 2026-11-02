@@ -302,7 +302,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
     },
 
     async moderateVideo(adminId, videoId, decision, notes) {
-      const { data: v } = await admin.from('videos').select('id, storage_path, status').eq('id', videoId).maybeSingle();
+      const { data: v } = await admin.from('videos').select('id, storage_path, status, uploader_id, caption').eq('id', videoId).maybeSingle();
       if (!v) return 'not_found';
       const update: Record<string, unknown> = { moderation_notes: notes };
       if (decision === 'publish') {
@@ -322,6 +322,12 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       const { error } = await admin.from('videos').update(update).eq('id', videoId);
       if (error) throw new Error(`moderate: ${error.message}`);
       await admin.from('audit_log').insert({ actor_id: adminId, action: `video_${decision}`, entity_type: 'video', entity_id: videoId, details: { notes } });
+      await admin.from('notifications').insert({
+        user_id: v.uploader_id, type: 'moderation',
+        title: decision === 'publish' ? 'Your video is live on CRAVE' : 'Your video wasn’t approved',
+        body: decision === 'publish' ? v.caption : `${notes ?? ''} You can appeal from My videos.`.trim(),
+        data: { video_id: videoId, decision },
+      });
       return 'ok';
     },
 

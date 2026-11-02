@@ -679,3 +679,136 @@ test('cancellation: customer before acceptance, restaurant rejection; both creat
   const notMine = await expectDenied(c, `select public.customer_cancel_order($1)`, [a]);
   assert.equal(notMine.error?.code, 'P0002');
 }));
+
+async function paidOrder(c, customer, { item = 'i-smash-classic', price = 1690, qty = 1, video = null } = {}) {
+  await asSuperuser(c);
+  const q = quoteJson([{ menuItemId: (await c.query(`select ${id(item)} as x`)).rows[0].x, name: item, unitPriceCents: price, quantity: qty, sourceVideoId: video }]);
+  const o = (await c.query(`select * from public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, $3, $2::jsonb, gen_random_uuid())`, [customer, q, video])).rows[0];
+  await c.query(`select public.confirm_order_payment($1, 'simulated', $2, $3, 0, true)`, [o.id, `sim_${o.id}`, o.total_cents]);
+  return o;
+}
+const ownerId = async (c) => (await c.query(`select ${id('user-demo-owner')} as x`)).rows[0].x;
+const makeAdmin = async (c, email) => { const a = await createUser(c, email); await asSuperuser(c); await c.query(`insert into public.user_roles (user_id, role) values ($1, 'admin')`, [a]); return a; };
+
+test('restaurant sales report: totals, commission, video and creator revenue; managers only', () => tx(async (c) => {
+  const cust = await createUser(c, 'buyer-r@example.com');
+  const v1 = (await c.query(`select ${id('video-v1')} as x`)).rows[0].x;
+  await paidOrder(c, cust, { qty: 2, video: v1 });              // 3380 from creator video
+  await paidOrder(c, cust, { item: 'i-smash-fries', price: 990 });
+  const rejected = await paidOrder(c, cust, { item: 'i-smash-fries', price: 990 });
+  await as(c, await ownerId(c));
+  await c.query(`select public.restaurant_update_order_status($1, 'rejected', 'Closed early')`, [rejected.id]);
+  const r = (await c.query(`select public.restaurant_sales_report(${id('r-valley-smash')}, now() - interval '1 day', now() + interval '1 day') as r`)).rows[0].r;
+  assert.equal(r.orders, 2);
+  assert.equal(r.grossSalesCents, 3380 + 990);
+  assert.equal(r.commissionCents, 338 + 99);
+  assert.equal(r.netCents, 4370 - 437);
+  assert.equal(r.rejected, 1);
+  assert.equal(r.fromVideosCents, 3380);
+  assert.equal(r.fromCreatorsCents, 3380);
+  assert.equal(r.topItems[0].name, 'i-smash-classic');
+  assert.equal(r.videos[0].creatorHandle, 'brisbanebites');
+  assert.equal(r.daily.length, 1);
+
+  const staff = await createUser(c, 'staff-r@example.com');
+  await asSuperuser(c);
+  await c.query(`insert into public.restaurant_members (restaurant_id, user_id, role) values (${id('r-valley-smash')}, $1, 'staff')`, [staff]);
+  await as(c, staff);
+  const denied = await expectDenied(c, `select public.restaurant_sales_report(${id('r-valley-smash')}, now() - interval '1 day', now())`);
+  assert.equal(denied.error?.code, '42501', 'staff cannot see financials');
+}));
+
+test('admin metrics, user lookup and settings are admin-only and audited', () => tx(async (c) => {
+  const cust = await createUser(c, 'metrics@example.com', { display_name: 'Metric Mel' });
+  await paidOrder(c, cust);
+  await as(c, cust);
+  for (const sql of [`select public.admin_platform_metrics(now() - interval '1 day', now())`, `select * from public.admin_find_users('')`,
+                     `select public.admin_set_setting('default_commission_bps', '800')`, `select * from public.recommendation_performance(7)`]) {
+    assert.equal((await expectDenied(c, sql)).error?.code, '42501', sql);
+  }
+  const admin = await makeAdmin(c, 'admin-m@example.com');
+  await as(c, admin);
+  const m = (await c.query(`select public.admin_platform_metrics(now() - interval '1 day', now() + interval '1 day') as m`)).rows[0].m;
+  assert.equal(m.orders, 1);
+  assert.equal(m.testModeOrders, 1);
+  assert.equal(m.activeRestaurants, 8);
+  const found = (await c.query(`select email, display_name, orders from public.admin_find_users('metric')`)).rows;
+  assert.deepEqual(found.map((u) => [u.email, Number(u.orders)]), [['metrics@example.com', 1]]);
+  await c.query(`select public.admin_set_setting('default_commission_bps', '850')`);
+  assert.equal((await expectDenied(c, `select public.admin_set_setting('default_commission_bps', '99999')`)).error?.code, '23514');
+  assert.equal((await expectDenied(c, `select public.admin_set_setting('anything', '1')`)).error?.code, '23514');
+  assert.equal((await c.query(`select count(*)::int n from public.audit_log where action = 'setting_changed'`)).rows[0].n, 1);
+  // The new default applies to the next restaurant created.
+  const owner = await createUser(c, 'next-owner@example.com');
+  await as(c, owner);
+  assert.equal((await c.query(`insert into public.restaurants (name, slug, created_by) values ('Next', 'next-one', $1) returning commission_rate_bps`, [owner])).rows[0].commission_rate_bps, 850);
+}));
+
+test('refunds: approve requested, partial refunds capped at amount paid', () => tx(async (c) => {
+  const cust = await createUser(c, 'refundee@example.com');
+  const o = await paidOrder(c, cust, { qty: 2 }); // total 3479
+  const admin = await makeAdmin(c, 'admin-r@example.com');
+  await as(c, admin);
+  const r1 = (await c.query(`select public.admin_create_refund($1, 1000, 'quality_issue', 'Cold fries') as id`, [o.id])).rows[0].id;
+  assert.ok(r1);
+  const over = await expectDenied(c, `select public.admin_create_refund($1, 2500, 'quality_issue', null)`, [o.id]);
+  assert.match(over.error?.message ?? '', /exceeds the remaining paid amount \(2479/);
+  await as(c, cust);
+  await asSuperuser(c);
+  const req = (await c.query(`insert into public.refunds (order_id, amount_cents, reason, status) values ($1, 500, 'customer_request', 'requested') returning id`, [o.id])).rows[0].id;
+  await as(c, admin);
+  assert.equal((await expectDenied(c, `select public.admin_decide_refund($1, false, null)`, [req])).error?.code, '23514', 'reason required');
+  await c.query(`select public.admin_decide_refund($1, true, 'Approved')`, [req]);
+  assert.equal((await c.query('select status from public.refunds where id = $1', [req])).rows[0].status, 'pending');
+  assert.equal((await expectDenied(c, `select public.admin_decide_refund($1, true, null)`, [req])).error?.code, 'P0001', 'cannot decide twice');
+}));
+
+test('content reports remove content; appeals can overturn and notify', () => tx(async (c) => {
+  const a = await createUser(c, 'reporter1@example.com');
+  const b = await createUser(c, 'reporter2@example.com');
+  for (const u of [a, b]) {
+    await as(c, u);
+    await c.query(`insert into public.content_reports (reporter_id, target_type, target_id, reason) values ($1, 'video', ${id('video-v2')}, 'misleading')`, [u]);
+  }
+  const admin = await makeAdmin(c, 'admin-c@example.com');
+  await as(c, admin);
+  const rep = (await c.query(`select id from public.content_reports limit 1`)).rows[0].id;
+  await c.query(`select public.admin_resolve_report($1, true, 'Dish shown is not on the menu')`, [rep]);
+  const statuses = (await c.query(`select status from public.content_reports where target_id = ${id('video-v2')}`)).rows.map((r) => r.status);
+  assert.deepEqual(statuses, ['actioned', 'actioned'], 'all reports on the same target resolved');
+  assert.equal((await c.query(`select status from public.videos where id = ${id('video-v2')}`)).rows[0].status, 'removed');
+
+  // The uploader appeals; admin overturns -> republished and notified.
+  const uploader = await ownerId(c);
+  await as(c, uploader);
+  await c.query(`insert into public.moderation_appeals (appellant_id, target_type, target_id, report_id, body) values ($1, 'video', ${id('video-v2')}, $2, 'This is our real chilli chicken burger, see menu.')`, [uploader, rep]);
+  await as(c, admin);
+  const ap = (await c.query('select id from public.moderation_appeals limit 1')).rows[0].id;
+  await c.query(`select public.admin_decide_appeal($1, true, 'Confirmed the dish is on the menu')`, [ap]);
+  assert.equal((await c.query(`select status from public.videos where id = ${id('video-v2')}`)).rows[0].status, 'published');
+  await as(c, uploader);
+  assert.equal((await c.query(`select count(*)::int n from public.notifications where type = 'moderation'`)).rows[0].n, 1);
+}));
+
+test('fraud rules flag refund abuse once; creators managed by admins', () => tx(async (c) => {
+  const cust = await createUser(c, 'abuser@example.com');
+  const admin = await makeAdmin(c, 'admin-f@example.com');
+  for (let i = 0; i < 3; i++) {
+    const o = await paidOrder(c, cust, { item: 'i-smash-fries', price: 990 });
+    await as(c, cust);
+    await c.query(`select public.customer_cancel_order($1)`, [o.id]);
+  }
+  await as(c, admin);
+  assert.equal((await c.query('select public.run_fraud_rules() as n')).rows[0].n, 1);
+  assert.equal((await c.query('select public.run_fraud_rules() as n')).rows[0].n, 0, 'no duplicate open flags');
+  const flag = (await c.query(`select id, rule, entity_id from public.fraud_flags`)).rows[0];
+  assert.equal(flag.rule, 'refunds_30d');
+  assert.equal(flag.entity_id, cust);
+  await c.query(`select public.admin_resolve_fraud_flag($1, 'false_positive', 'Genuine cancellations')`, [flag.id]);
+
+  const creator = (await c.query(`select ${id('user-demo-creator2')} as x`)).rows[0].x;
+  assert.equal((await expectDenied(c, `select public.admin_update_creator($1, true, 'approved', null)`, [creator])).error?.code, '23514');
+  await c.query(`select public.admin_update_creator($1, true, 'approved', 500)`, [creator]);
+  const cr = (await c.query('select is_verified, affiliate_status, affiliate_commission_bps from public.creators where user_id = $1', [creator])).rows[0];
+  assert.deepEqual(cr, { is_verified: true, affiliate_status: 'approved', affiliate_commission_bps: 500 });
+}));

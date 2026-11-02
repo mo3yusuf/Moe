@@ -14,6 +14,15 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <Link href="/admin">Overview</Link>
         <Link href="/admin/verifications">Restaurant verification</Link>
         <Link href="/admin/videos">Video moderation</Link>
+        <Link href="/admin/reports">Reports & appeals</Link>
+        <Link href="/admin/orders">Orders</Link>
+        <Link href="/admin/refunds">Refunds</Link>
+        <Link href="/admin/users">Customers</Link>
+        <Link href="/admin/creators">Creators</Link>
+        <Link href="/admin/commission">Commission & fees</Link>
+        <Link href="/admin/fraud">Fraud flags</Link>
+        <Link href="/admin/recommendations">Recommendations</Link>
+        <Link href="/admin/support">Support</Link>
       </nav>
       <main>{children}</main>
     </div>

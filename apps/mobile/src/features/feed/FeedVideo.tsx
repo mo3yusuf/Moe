@@ -14,6 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { colors, font, HIT, radius, space } from '@/theme/tokens';
+import { reportVideo } from '@/features/moderation/report';
 import { track, watchSession } from './events';
 import type { FeedEntry } from './use-feed';
 
@@ -218,6 +219,7 @@ function FeedVideoBase(props: FeedVideoProps) {
         <RailButton icon={item.viewer.saved ? 'bookmark' : 'bookmark-outline'} label="Save" active={item.viewer.saved}
           onPress={() => props.onToggleSave(item)} />
         <RailButton icon="arrow-redo-outline" label="Share" onPress={() => props.onShare(item)} />
+        <RailButton icon="flag-outline" label="Report" onPress={() => reportVideo(item.videoId)} />
       </View>
 
       {/* Meal info and ordering. */}
