@@ -41,7 +41,7 @@ export function exclusionReason(
     return 'dietary_requirement';
   }
   if (prefs.avoidTags.length > 0) {
-    const tags = new Set(c.tags.map((t) => t.toLowerCase()));
+    const tags = new Set([...c.tags, ...(c.allergens ?? [])].map((t) => t.toLowerCase()));
     if (prefs.avoidTags.some((t) => tags.has(t.toLowerCase()))) return 'avoided_tag';
   }
   if (prefs.maxSpiceLevel !== null && c.spiceLevel !== null && c.spiceLevel > prefs.maxSpiceLevel) return 'too_spicy';

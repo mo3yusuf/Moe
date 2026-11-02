@@ -199,8 +199,9 @@ describe('feed ranking', () => {
     const hot = meal({ cuisines: ['Thai'], spiceLevel: 4 });
     const far = meal({ cuisines: ['Thai'], distanceKm: 40 });
     const okay = meal({ cuisines: ['Thai'], spiceLevel: 1 });
+    const declaredAllergen = meal({ cuisines: ['Thai'], allergens: ['peanut'] });
     const prefs = { ...EMPTY_PREFERENCES, avoidTags: ['peanut'], maxSpiceLevel: 2 };
-    const ranked = rankFeed([peanut, hot, far, okay], emptyTasteProfile(), prefs, ctx(), CONFIG);
+    const ranked = rankFeed([peanut, hot, far, okay, declaredAllergen], emptyTasteProfile(), prefs, ctx(), CONFIG);
     expect(ranked.map((r) => r.candidate.videoId)).toEqual([okay.videoId]);
   });
 

@@ -34,6 +34,7 @@ export interface VideoRow {
   food_category: string | null;
   item_tags: string[] | null;
   item_dietary: string[] | null;
+  item_allergens: string[] | null;
   spice_level: number | null;
   // Restaurant (active only)
   restaurant_id: string | null;
@@ -84,7 +85,7 @@ export async function loadVideoRows(
       case when r.id is not null then mi.price_cents end as price_cents,
       case when r.id is not null then mi.currency end as currency,
       case when r.id is not null then (mi.is_available and mi.archived_at is null) end as item_available,
-      mi.cuisine as item_cuisine, mi.food_category, mi.tags as item_tags, mi.dietary_attributes as item_dietary, mi.spice_level,
+      mi.cuisine as item_cuisine, mi.food_category, mi.tags as item_tags, mi.dietary_attributes as item_dietary, mi.allergens as item_allergens, mi.spice_level,
       r.id as restaurant_id, r.name as restaurant_name, r.slug as restaurant_slug, r.cuisines as restaurant_cuisines,
       r.verified_dietary as restaurant_verified_dietary, r.rating_avg::text as rating_avg, r.rating_count,
       r.accepting_orders, r.pickup_enabled, r.accepts_advance_orders,

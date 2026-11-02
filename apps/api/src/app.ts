@@ -9,6 +9,7 @@ import { env } from './env';
 import { HttpError, badRequest } from './errors';
 import { ingestEvents } from './services/events';
 import { buildFeed } from './services/feed';
+import { getMenuItem, getRestaurantMenu } from './services/menu';
 import { loadPreferences, loadTasteProfile, summariseProfile } from './services/taste';
 
 const FeedQuery = z.object({
@@ -65,6 +66,11 @@ export function createApp() {
     });
     return c.json(feed);
   });
+
+  // --- Public catalogue (active restaurants only) -----------------------------
+  const Id = z.string().uuid();
+  app.get('/v1/restaurants/:id', async (c) => c.json(await getRestaurantMenu(db(), Id.parse(c.req.param('id')))));
+  app.get('/v1/menu-items/:id', async (c) => c.json(await getMenuItem(db(), Id.parse(c.req.param('id')))));
 
   // --- Interaction events ------------------------------------------------------
   app.post('/v1/events', requireAuth, async (c) => {

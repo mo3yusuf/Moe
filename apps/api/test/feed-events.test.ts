@@ -84,6 +84,8 @@ describe('GET /v1/feed', () => {
     const d = items.map((i) => i.restaurant!.distanceKm!);
     expect([...d].sort((a, b) => a - b)).toEqual(d);
     expect(items[0]!.restaurant!.name).toBe('Ember & Bun (DEMO)');
+    const dishes = items.map((i) => i.meal!.menuItemId);
+    expect(new Set(dishes).size).toBe(dishes.length); // one entry per dish
   });
 
   it('following feed only contains followed creators and restaurants', async () => {
@@ -215,5 +217,29 @@ describe('Reset My Taste Profile', () => {
     const { body } = await get('/v1/me/taste-profile', U.customer2);
     expect(body.dataUsed.length).toBeGreaterThan(3);
     expect(body.notUsed.join(' ')).toMatch(/precise location/);
+  });
+});
+
+describe('public catalogue endpoints', () => {
+  it('returns a menu item with customisations and orderability', async () => {
+    const { status, body } = await get(`/v1/menu-items/${ids.items['ember:smash']}`);
+    expect(status).toBe(200);
+    expect(body.item.name).toBe('Double Smash Burger');
+    expect(body.item.modifierGroups.map((g: any) => g.name)).toEqual(['Make it a meal', 'Extras']);
+    expect(body.restaurant.deliveryEnabled).toBe(false);
+    expect(typeof body.orderable).toBe('boolean');
+  });
+
+  it('returns a restaurant menu grouped by category with linked videos', async () => {
+    const { body } = await get(`/v1/restaurants/${ids.restaurants.kaizen}`);
+    expect(body.restaurant.name).toBe('Kaizen Sushi Bar (DEMO)');
+    const aburi = body.categories.flatMap((c: any) => c.items).find((i: any) => i.id === ids.items['kaizen:aburi']);
+    expect(aburi.videoIds).toContain(V.v_aburi);
+  });
+
+  it('hides restaurants that are not verified/active', async () => {
+    expect((await get(`/v1/restaurants/${ids.restaurants.sweet}`)).status).toBe(404);
+    expect((await get(`/v1/menu-items/${ids.items['sweet:cookie']}`)).status).toBe(404);
+    expect((await get('/v1/menu-items/not-a-uuid')).status).toBe(400);
   });
 });

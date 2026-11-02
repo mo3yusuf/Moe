@@ -64,6 +64,7 @@ function toCandidate(row: VideoRow, location: LatLng | null, orderable: boolean)
     publishedAt: row.published_at.toISOString(),
     trendingScore: row.trending_score ?? 0,
     verifiedDietary: [...new Set([...(row.restaurant_verified_dietary ?? [])])],
+    allergens: row.item_allergens ?? [],
     spiceLevel: row.spice_level,
     isSponsored: row.is_sponsored,
   };
@@ -141,8 +142,16 @@ export async function buildFeed(sql: Sql, req: FeedRequest): Promise<{ items: Fe
       config,
       req.limit,
     );
-    if (req.kind === 'nearby' && req.location) {
-      ranked.sort((a, b) => (a.candidate.distanceKm ?? 99) - (b.candidate.distanceKm ?? 99));
+    if (req.kind === 'nearby') {
+      // "Order now" shelf: one entry per dish, closest first.
+      const seenItems = new Set<string>();
+      ranked = ranked.filter((r) => {
+        const key = r.candidate.menuItemId ?? r.candidate.videoId;
+        if (seenItems.has(key)) return false;
+        seenItems.add(key);
+        return true;
+      });
+      if (req.location) ranked.sort((a, b) => (a.candidate.distanceKm ?? 99) - (b.candidate.distanceKm ?? 99));
     }
   }
 

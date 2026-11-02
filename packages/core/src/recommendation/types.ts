@@ -35,6 +35,8 @@ export interface FeedCandidate extends MealFeatures {
   trendingScore: number;
   /** Restaurant-declared dietary attributes that CRAVE has verified, e.g. 'halal_certified'. */
   verifiedDietary: string[];
+  /** Restaurant-declared allergens. Used ONLY for the customer's explicit "avoid" filter, never for learning. */
+  allergens?: string[];
   /** Restaurant-declared spice level 0 (none) .. 4 (very hot). */
   spiceLevel: number | null;
   isSponsored: boolean;

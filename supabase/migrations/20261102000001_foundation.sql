@@ -153,6 +153,21 @@ begin
     values (new.id, coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1)), default_market);
   insert into public.user_roles (user_id, role) values (new.id, 'customer');
   insert into public.user_preferences (user_id) values (new.id);
+  -- Consents captured on the sign-up screen are passed as user metadata and
+  -- recorded as the first entries of the consent audit trail.
+  if new.raw_user_meta_data ? 'policy_version' then
+    insert into public.privacy_consents (user_id, consent, granted, policy_version, source)
+    select new.id, c.consent, c.granted, new.raw_user_meta_data ->> 'policy_version', 'app'
+    from (values
+      ('terms_of_service'::public.consent_type, coalesce((new.raw_user_meta_data ->> 'accepted_terms')::boolean, false)),
+      ('privacy_policy'::public.consent_type, coalesce((new.raw_user_meta_data ->> 'accepted_terms')::boolean, false)),
+      ('personalisation'::public.consent_type, coalesce((new.raw_user_meta_data ->> 'personalisation_opt_in')::boolean, false))
+    ) as c(consent, granted);
+    update public.profiles
+      set personalisation_enabled = coalesce((new.raw_user_meta_data ->> 'personalisation_opt_in')::boolean, false),
+          date_of_birth_confirmed_16_plus = coalesce((new.raw_user_meta_data ->> 'age_16_plus')::boolean, false)
+      where id = new.id;
+  end if;
   return new;
 end $$;
 
