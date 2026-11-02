@@ -2,7 +2,7 @@
  * Data-access contract used by route handlers. The production implementation talks to Supabase
  * (see supabase-store.ts); tests use in-memory fakes. Route handlers never build SQL.
  */
-import type { ExplicitPreferences, FeedCandidate, Signal } from '@crave/core';
+import type { ExplicitPreferences, FeedCandidate, ItemDef, Quote, ServiceFeeConfig, Signal } from '@crave/core';
 import type { EventWritePlan } from './events';
 
 export interface MeResult {
@@ -96,6 +96,32 @@ export interface ModerationVideo {
   openReports: number;
 }
 
+export interface OrderableItemDef extends ItemDef {
+  restaurantId: string;
+  restaurantName: string;
+  commissionRateBps: number;
+  locationId: string | null;
+  acceptsAdvanceOrders: boolean;
+}
+
+export interface BasketRow {
+  id: string; restaurantId: string; locationId: string;
+  items: { id: string; menuItemId: string; quantity: number; optionIds: string[]; notes: string | null; sourceVideoId: string | null }[];
+}
+
+export interface LocationStatus { isOpen: boolean; acceptingOrders: boolean; pickupEnabled: boolean; prepTimeMinutes: number }
+
+export interface OrderView {
+  id: string; orderNumber: string; status: string; restaurantId: string; restaurantName: string; pickupName: string;
+  customerNote: string | null; scheduledFor: string | null; createdAt: string; placedAt: string | null; estimatedReadyAt: string | null;
+  subtotalCents: number; serviceFeeCents: number; totalCents: number; gstCents: number; currency: string; cancelReason: string | null;
+  pickupAddress: string | null;
+  items: { name: string; quantity: number; unitPriceCents: number; lineTotalCents: number; options: { name: string }[]; notes: string | null }[];
+  events: { status: string; at: string; note: string | null }[];
+  refunds: { amountCents: number; status: string; reason: string }[];
+  payment: { provider: string; status: string; isTestMode: boolean } | null;
+}
+
 export interface DataStore {
   getMe(userId: string): Promise<MeResult | null>;
   hasConsent(userId: string, consentType: string): Promise<boolean>;
@@ -115,6 +141,22 @@ export interface DataStore {
   listVideosForModeration(status: 'pending_review' | 'published' | 'rejected', limit: number): Promise<ModerationVideo[]>;
   /** Publishes (copying the upload to the public playback bucket), rejects or removes a video. Audited. */
   moderateVideo(adminId: string, videoId: string, decision: 'publish' | 'reject' | 'remove', notes: string | null): Promise<'ok' | 'not_found' | 'missing_upload'>;
+  itemDefs(menuItemIds: string[]): Promise<Map<string, OrderableItemDef>>;
+  locationStatus(locationId: string, at?: Date): Promise<LocationStatus | null>;
+  serviceFeeConfig(): Promise<ServiceFeeConfig>;
+  getBasket(userId: string): Promise<BasketRow | null>;
+  createBasket(userId: string, restaurantId: string, locationId: string): Promise<BasketRow>;
+  abandonBasket(userId: string): Promise<void>;
+  addBasketItem(basketId: string, item: { menuItemId: string; quantity: number; optionIds: string[]; notes: string | null; sourceVideoId: string | null }): Promise<void>;
+  updateBasketItem(basketId: string, itemId: string, quantity: number): Promise<boolean>;
+  removeBasketItem(basketId: string, itemId: string): Promise<boolean>;
+  createPendingOrder(input: {
+    userId: string; restaurantId: string; locationId: string; pickupName: string; note: string | null;
+    scheduledFor: string | null; sourceVideoId: string | null; quote: Quote; idempotencyKey: string;
+  }): Promise<{ id: string; orderNumber: string; status: string; totalCents: number }>;
+  confirmPayment(orderId: string, provider: 'simulated' | 'stripe', providerRef: string, amountCents: number, applicationFeeCents: number, testMode: boolean): Promise<void>;
+  listOrders(userId: string): Promise<OrderView[]>;
+  getOrder(userId: string, orderId: string): Promise<OrderView | null>;
   getPreferences(userId: string): Promise<ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }>;
   setPreferences(userId: string, prefs: ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }): Promise<void>;
 }

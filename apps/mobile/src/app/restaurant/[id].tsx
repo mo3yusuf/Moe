@@ -3,7 +3,7 @@ import { DIETARY_LABELS, formatMoney, titleCase, type DietaryTag } from '@crave/
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, SectionList, View } from 'react-native';
+import { ActivityIndicator, Pressable, SectionList, View } from 'react-native';
 import { Button, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { colors, radius, space } from '@/theme/tokens';
@@ -67,7 +67,8 @@ export default function RestaurantScreen() {
         renderSectionHeader={({ section }) => <T variant="heading" style={{ marginTop: space.md }}>{section.title}</T>}
         renderItem={({ item: m }) => (
           <Pressable accessibilityRole="button" accessibilityLabel={`${m.name}, ${formatMoney(m.priceCents, m.currency)}${m.isAvailable ? '' : ', sold out'}`}
-            onPress={() => Alert.alert(m.name, 'Ordering from the menu arrives in Phase 5.')}
+            disabled={!m.isAvailable}
+            onPress={() => router.push({ pathname: '/item/[id]', params: { id: m.menuItemId, ...(m.videoId ? { video: m.videoId } : {}) } })}
             style={{ flexDirection: 'row', gap: space.md, paddingVertical: space.sm, opacity: m.isAvailable ? 1 : 0.5 }}>
             <View style={{ width: 84, height: 84, borderRadius: radius.md, backgroundColor: colors.surface, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
               {m.imageUrl ? <Image source={{ uri: m.imageUrl }} style={{ width: 84, height: 84 }} contentFit="cover" accessibilityIgnoresInvertColors /> : <Ionicons name="restaurant-outline" size={28} color={colors.textFaint} />}

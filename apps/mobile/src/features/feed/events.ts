@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { config } from '@/lib/config';
 
 export type ActionEvent = { kind: 'action'; action: 'like' | 'unlike' | 'save' | 'unsave'; videoId: string; menuItemId?: string | null };
-export type ClickEvent = { kind: 'interaction'; eventType: 'share' | 'menu_item_click' | 'order_click' | 'restaurant_click'; videoId: string; menuItemId?: string | null; feedRequestId?: string | null };
+export type ClickEvent = { kind: 'interaction'; eventType: 'share' | 'menu_item_click' | 'order_click' | 'add_to_basket' | 'restaurant_click'; videoId: string; menuItemId?: string | null; feedRequestId?: string | null };
 export type ClientEvent = FeedEvent | SwipeEvent | ActionEvent | ClickEvent;
 
 /** One watch session per app launch: governs impressions, skips, replays and swipe de-duplication. */

@@ -17,7 +17,7 @@ export default async function RestaurantShell({ children, params }: { children: 
         </div>
       </div>
       <nav className="row" aria-label="Restaurant sections">
-        {[['', 'Overview'], ['/menu', 'Menu'], ['/hours', 'Hours & availability'], ['/content', 'Videos & creator tags'], ['/verification', 'Verification']].map(([p, l]) => (
+        {[['', 'Overview'], ['/orders', 'Orders'], ['/menu', 'Menu'], ['/hours', 'Hours & availability'], ['/content', 'Videos & creator tags'], ['/verification', 'Verification']].map(([p, l]) => (
           <Link key={p} href={`${base}${p}`} className="btn secondary">{l}</Link>
         ))}
       </nav>

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { EMPTY_PREFERENCES, type DietaryTag, type ExplicitPreferences, type FeedCandidate, type Signal } from '@crave/core';
-import type { DataStore, MeResult } from './store';
+import { EMPTY_PREFERENCES, parseServiceFeeConfig, type DietaryTag, type ExplicitPreferences, type FeedCandidate, type Signal } from '@crave/core';
+import type { BasketRow, DataStore, MeResult, OrderView } from './store';
 
 /** Maps a public.feed_candidates() row to the shared camelCase shape. */
 export function mapCandidate(r: any): FeedCandidate {
@@ -325,6 +325,108 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       return 'ok';
     },
 
+    async itemDefs(ids) {
+      const out = new Map();
+      if (!ids.length) return out;
+      const { data, error } = await admin.from('menu_items')
+        .select('id, name, price_cents, is_available, gst_applicable, restaurant_id, restaurants(name, status, commission_rate_bps, accepts_advance_orders, restaurant_locations(id)), menu_item_option_groups(id, name, min_select, max_select, menu_item_options(id, name, price_delta_cents, is_available))')
+        .in('id', ids);
+      if (error) throw new Error(`items: ${error.message}`);
+      for (const m of (data ?? []) as any[]) {
+        if (m.restaurants?.status !== 'verified') continue;
+        out.set(m.id, {
+          id: m.id, name: m.name, priceCents: m.price_cents, isAvailable: m.is_available, gstApplicable: m.gst_applicable,
+          restaurantId: m.restaurant_id, restaurantName: m.restaurants.name, commissionRateBps: m.restaurants.commission_rate_bps,
+          acceptsAdvanceOrders: m.restaurants.accepts_advance_orders, locationId: m.restaurants.restaurant_locations?.[0]?.id ?? null,
+          optionGroups: (m.menu_item_option_groups ?? []).map((g: any) => ({
+            id: g.id, name: g.name, minSelect: g.min_select, maxSelect: g.max_select,
+            options: (g.menu_item_options ?? []).map((o: any) => ({ id: o.id, name: o.name, priceDeltaCents: o.price_delta_cents, isAvailable: o.is_available })),
+          })),
+        });
+      }
+      return out;
+    },
+
+    async locationStatus(locationId, at) {
+      const { data } = await admin.from('restaurant_locations').select('is_accepting_orders, pickup_enabled, prep_time_minutes').eq('id', locationId).maybeSingle();
+      if (!data) return null;
+      const open = await admin.rpc('location_is_open', { p_location_id: locationId, p_at: (at ?? new Date()).toISOString() });
+      return { isOpen: open.data === true, acceptingOrders: data.is_accepting_orders, pickupEnabled: data.pickup_enabled, prepTimeMinutes: data.prep_time_minutes };
+    },
+
+    async serviceFeeConfig() {
+      const { data } = await admin.from('platform_settings').select('value').eq('key', 'service_fee').maybeSingle();
+      return parseServiceFeeConfig(data?.value);
+    },
+
+    async getBasket(userId) {
+      const { data, error } = await admin.from('baskets').select('id, restaurant_id, location_id, basket_items(id, menu_item_id, quantity, option_ids, notes, source_video_id, created_at)')
+        .eq('user_id', userId).eq('status', 'active').maybeSingle();
+      if (error) throw new Error(`basket: ${error.message}`);
+      if (!data) return null;
+      return toBasket(data);
+    },
+
+    async createBasket(userId, restaurantId, locationId) {
+      const { data, error } = await admin.from('baskets').insert({ user_id: userId, restaurant_id: restaurantId, location_id: locationId }).select('id, restaurant_id, location_id').single();
+      if (error) throw new Error(`basket: ${error.message}`);
+      return toBasket({ ...data, basket_items: [] });
+    },
+
+    async abandonBasket(userId) {
+      await admin.from('baskets').update({ status: 'abandoned' }).eq('user_id', userId).eq('status', 'active');
+    },
+
+    async addBasketItem(basketId, i) {
+      const { error } = await admin.from('basket_items').insert({
+        basket_id: basketId, menu_item_id: i.menuItemId, quantity: i.quantity, option_ids: i.optionIds, notes: i.notes, source_video_id: i.sourceVideoId,
+      });
+      if (error) throw new Error(`basket item: ${error.message}`);
+    },
+
+    async updateBasketItem(basketId, itemId, quantity) {
+      const { data, error } = await admin.from('basket_items').update({ quantity }).eq('id', itemId).eq('basket_id', basketId).select('id');
+      if (error) throw new Error(`basket item: ${error.message}`);
+      return !!data?.length;
+    },
+
+    async removeBasketItem(basketId, itemId) {
+      const { data, error } = await admin.from('basket_items').delete().eq('id', itemId).eq('basket_id', basketId).select('id');
+      if (error) throw new Error(`basket item: ${error.message}`);
+      return !!data?.length;
+    },
+
+    async createPendingOrder(i) {
+      const { data, error } = await admin.rpc('create_pending_order', {
+        p_user_id: i.userId, p_restaurant_id: i.restaurantId, p_location_id: i.locationId, p_pickup_name: i.pickupName,
+        p_note: i.note, p_scheduled_for: i.scheduledFor, p_source_video_id: i.sourceVideoId, p_quote: i.quote, p_idempotency_key: i.idempotencyKey,
+      }).single();
+      if (error) throw new Error(`create order: ${error.message}`);
+      const o = data as any;
+      return { id: o.id, orderNumber: o.order_number, status: o.status, totalCents: o.total_cents };
+    },
+
+    async confirmPayment(orderId, provider, providerRef, amountCents, applicationFeeCents, testMode) {
+      const { error } = await admin.rpc('confirm_order_payment', {
+        p_order_id: orderId, p_provider: provider, p_provider_ref: providerRef, p_amount_cents: amountCents,
+        p_application_fee_cents: applicationFeeCents, p_test_mode: testMode,
+      });
+      if (error) throw new Error(`confirm payment: ${error.message}`);
+    },
+
+    async listOrders(userId) {
+      const { data, error } = await admin.from('orders').select(ORDER_SELECT).eq('user_id', userId).neq('status', 'pending_payment')
+        .order('created_at', { ascending: false }).limit(50);
+      if (error) throw new Error(`orders: ${error.message}`);
+      return (data ?? []).map(toOrderView);
+    },
+
+    async getOrder(userId, orderId) {
+      const { data, error } = await admin.from('orders').select(ORDER_SELECT).eq('id', orderId).eq('user_id', userId).maybeSingle();
+      if (error) throw new Error(`order: ${error.message}`);
+      return data ? toOrderView(data) : null;
+    },
+
     async listSaved(userId, collection) {
       const { data, error } = await admin.from('saved_meals').select('video_id, menu_item_id, created_at, collection, menu_items(name, price_cents, currency, is_available, restaurants(name))')
         .eq('user_id', userId).eq('collection', collection).order('created_at', { ascending: false }).limit(200);
@@ -338,4 +440,31 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
     },
   };
   return store;
+}
+
+const ORDER_SELECT = 'id, order_number, status, restaurant_id, pickup_name, customer_note, scheduled_for, created_at, placed_at, estimated_ready_at, subtotal_cents, service_fee_cents, total_cents, gst_cents, currency, cancel_reason, restaurants(name), restaurant_locations(address_line1, suburb, postcode), order_items(name, quantity, unit_price_cents, line_total_cents, options, notes), order_status_events(to_status, created_at, note), refunds(amount_cents, status, reason), payments(provider, status, is_test_mode)';
+
+function toBasket(b: any): BasketRow {
+  return {
+    id: b.id, restaurantId: b.restaurant_id, locationId: b.location_id,
+    items: [...(b.basket_items ?? [])].sort((x: any, y: any) => String(x.created_at).localeCompare(String(y.created_at))).map((i: any) => ({
+      id: i.id, menuItemId: i.menu_item_id, quantity: i.quantity, optionIds: i.option_ids ?? [], notes: i.notes, sourceVideoId: i.source_video_id,
+    })),
+  };
+}
+
+function toOrderView(o: any): OrderView {
+  const loc = o.restaurant_locations;
+  const pay = (o.payments ?? [])[0];
+  return {
+    id: o.id, orderNumber: o.order_number, status: o.status, restaurantId: o.restaurant_id, restaurantName: o.restaurants?.name ?? '',
+    pickupName: o.pickup_name, customerNote: o.customer_note, scheduledFor: o.scheduled_for, createdAt: o.created_at, placedAt: o.placed_at,
+    estimatedReadyAt: o.estimated_ready_at, subtotalCents: o.subtotal_cents, serviceFeeCents: o.service_fee_cents, totalCents: o.total_cents,
+    gstCents: o.gst_cents, currency: o.currency, cancelReason: o.cancel_reason,
+    pickupAddress: loc ? `${loc.address_line1}, ${loc.suburb} ${loc.postcode}` : null,
+    items: (o.order_items ?? []).map((i: any) => ({ name: i.name, quantity: i.quantity, unitPriceCents: i.unit_price_cents, lineTotalCents: i.line_total_cents, options: (i.options ?? []).map((x: any) => ({ name: x.name })), notes: i.notes })),
+    events: (o.order_status_events ?? []).map((e: any) => ({ status: e.to_status, at: e.created_at, note: e.note })).sort((a: any, b: any) => a.at.localeCompare(b.at)),
+    refunds: (o.refunds ?? []).map((r: any) => ({ amountCents: r.amount_cents, status: r.status, reason: r.reason })),
+    payment: pay ? { provider: pay.provider, status: pay.status, isTestMode: pay.is_test_mode } : null,
+  };
 }

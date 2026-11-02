@@ -13,7 +13,7 @@ const Swipe = z.object({
 
 const Interaction = z.object({
   kind: z.literal('interaction'),
-  eventType: z.enum(['impression', 'watch', 'replay', 'share', 'menu_item_click', 'order_click', 'restaurant_click']),
+  eventType: z.enum(['impression', 'watch', 'replay', 'share', 'menu_item_click', 'order_click', 'add_to_basket', 'restaurant_click']),
   videoId: uuid,
   menuItemId: uuid.nullish(),
   watchMs: z.number().int().min(0).max(3_600_000).optional(),

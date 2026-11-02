@@ -16,6 +16,7 @@ const app = createApp({
   auth: supabaseAuthVerifier(admin),
   store,
   ranker: rulesRanker(store, { onError: (e) => console.error('[crave-api] impression logging failed', e) }),
+  paymentsMode: env.PAYMENTS_MODE,
   corsOrigins: env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
 });
 

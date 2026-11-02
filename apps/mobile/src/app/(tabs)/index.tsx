@@ -3,7 +3,7 @@ import type { SwipeDirection } from '@crave/core';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, Alert, AppState, FlatList, Pressable, Share, StyleSheet, View,
+  AccessibilityInfo, ActivityIndicator, AppState, FlatList, Pressable, Share, StyleSheet, View,
   type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,8 +25,8 @@ export default function ForYou() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [screenReader, setScreenReader] = useState(false);
   const listRef = useRef<FlatList<FeedEntry>>(null);
-  const { items, loading, error, personalised, loadMore, refresh, patch } = useFeed();
   const router = useRouter();
+  const { items, loading, error, personalised, loadMore, refresh, patch } = useFeed();
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   useEffect(() => {
@@ -89,8 +89,9 @@ export default function ForYou() {
 
   const onOrder = useCallback((item: FeedEntry) => {
     track({ kind: 'interaction', eventType: 'order_click', videoId: item.videoId, menuItemId: item.menuItem?.id ?? null, feedRequestId: item.feedRequestId });
-    Alert.alert('Ordering is coming', 'Pickup ordering from videos is built in Phase 5.');
-  }, []);
+    if (!item.menuItem) return;
+    router.push({ pathname: '/item/[id]', params: { id: item.menuItem.id, video: item.videoId } });
+  }, [router]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -115,7 +116,7 @@ export default function ForYou() {
               preload={index > activeIndex && index <= activeIndex + PRELOAD_AHEAD || index === activeIndex - 1}
               focused={focused}
               bottomInset={space.md}
-              orderingEnabled={false}
+              orderingEnabled={!config.demoMode}
               onSwipe={onSwipe}
               onToggleLike={onToggleLike}
               onToggleSave={onToggleSave}

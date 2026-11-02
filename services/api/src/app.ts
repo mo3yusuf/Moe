@@ -10,12 +10,14 @@ import { feedRoutes } from './routes/feed';
 import { eventRoutes } from './routes/events';
 import { tasteRoutes } from './routes/taste';
 import { adminRoutes, discoverRoutes } from './routes/discover';
+import { orderRoutes } from './routes/orders';
 import { ApiError, notFound } from './lib/errors';
 
 export interface AppDeps {
   auth: AuthVerifier;
   store: DataStore;
   ranker: Ranker;
+  paymentsMode: 'disabled' | 'simulated' | 'stripe';
   corsOrigins: string[];
   now?: () => Date;
 }
@@ -53,6 +55,7 @@ export function createApp(deps: AppDeps) {
   app.route('/v1', eventRoutes);
   app.route('/v1', tasteRoutes);
   app.route('/v1', discoverRoutes);
+  app.route('/v1', orderRoutes);
   app.route('/v1/admin', adminRoutes);
 
   app.notFound((c) => c.json({ error: { code: 'not_found', message: 'Route not found' } }, 404));

@@ -101,3 +101,27 @@ Each phase lists what was actually built, how it was verified, and what is incom
 - No video transcoding or thumbnails yet: videos are served as uploaded. Uploads up to 500 MB are accepted; a streaming provider (HLS, thumbnails, compression) is needed before scale.
 - No automatic content scanning; moderation is manual. Notifications to uploaders and restaurants (tag requests, decisions) are recorded in the dashboard only — push/email arrive with Phase 5.
 - Creator attribution of orders and affiliate commissions are not live (affiliate applications are recorded only).
+
+## Phase 5 — Ordering from videos, basket and pickup checkout
+
+### Built
+- **Order This Meal** from any eligible video (and from restaurant menus): opens the exact menu item with its current price, valid customisations only (required/optional groups, min/max, unavailable options disabled), quantity and kitchen notes; the video is recorded as the order's source.
+- **Pricing engine** (`@crave/core/pricing`): server-authoritative quotes in integer cents — options, quantities, service fee (admin-configurable, validated), GST included (taxable lines + service fee, GST-free items supported), per-restaurant commission snapshot, restaurant net; caps on lines, quantities and order size. Clients never send prices.
+- **Basket API**: one restaurant per basket (explicit "start a new basket" on conflict), re-priced from the database on every read, lines that became unavailable are flagged and block checkout.
+- **Checkout API**: re-validates everything, refuses closed / paused / pickup-disabled restaurants, supports advance orders only where the restaurant allows them and only within opening hours, idempotent by a client key (double taps can't create two orders).
+- **Database**: `create_pending_order` (atomic, idempotent, lines must belong to the restaurant and reconcile with the subtotal), `confirm_order_payment` (amount must equal the order total; duplicate confirmations are no-ops; releases the order to the restaurant, records **creator attribution** for approved video→item links with attributed revenue, updates video order/revenue stats, notifies restaurant staff), automatic **refund requests** when a paid order is rejected or cancelled, and `customer_cancel_order` (only before the restaurant accepts).
+- **Payment step — SIMULATED**: `PAYMENTS_MODE=simulated` enables a clearly labelled "TEST PAYMENT — no real money is taken" step. The API refuses to start with it in production, and the database forbids a simulated payment ever being marked live. Stripe replaces it in Phase 7.
+- **Merchant acceptance (web)**: live order queue (auto-refresh every 15 s) with accept → preparing → ready → collected, decline/cancel with a required reason (customer notified, refund request created), and per-order food / commission / net breakdown. Restaurants see the pickup name only — never the customer's email or phone.
+- **Mobile**: item sheet, basket (quantities, fees, GST line, pickup name, note), test payment screen, live order status (polls every 10 s; real restaurant updates only — no simulated tracking), customer cancellation before acceptance, Orders tab with basket shortcut. Ordering buttons in the feed and restaurant menus are now live (disabled in demo mode).
+
+### Tested
+- Core (66, +10): selection validation, pricing incl. options/quantities/GST-free/commission rates, invalid baskets, reconciliation property over many prices, fee config validation.
+- API (41, +10): server-side pricing ignores client prices, invalid customisations, one-restaurant baskets, sold-out after adding, checkout refusal when closed/paused/pickup off, advance-order rules, idempotency key and video attribution passed through, disabled payments, simulated payment ownership/mode/amount, production refusal of simulated mode.
+- Database (35, +3): idempotent order creation, backend-only creation, amount mismatch rejected, duplicate confirmation no-op, creator attribution and video revenue, restaurant notification, simulated-can't-be-live constraint, cross-restaurant items rejected, customer cancel / restaurant reject → refund requests, cancel blocked after acceptance and for other users.
+
+### Not production-ready
+- **No real payments yet.** Refund *requests* are recorded but not executed against a provider. Both are Phase 7 (Stripe Connect).
+- Order updates use polling (mobile 10 s, dashboard 15 s); push notifications and realtime subscriptions are not built yet.
+- Restaurant staff get in-app notification records only; no sound alert / printer integration for new orders.
+- Delivery is not offered (pickup only), by design until Phase 8.
+- GST treatment of the service fee and commission, tax invoices/receipts, and the agent-vs-principal model need accountant review.

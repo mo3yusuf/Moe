@@ -38,7 +38,7 @@ SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_SERVICE_ROLE_KEY=<service key> \
   node scripts/create-demo-accounts.mjs   # loginable demo accounts (local/staging only)
 
 # 2. API
-cp services/api/.env.example services/api/.env   # fill in keys from `supabase start`
+cp services/api/.env.example services/api/.env   # fill in keys from `supabase start`; PAYMENTS_MODE=simulated for local testing
 npm run dev:api                                   # http://localhost:8787/health
 
 # 3. Web dashboards

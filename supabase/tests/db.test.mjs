@@ -589,3 +589,93 @@ test('creator upload flow (as the mobile app performs it) ends pending review wi
   // Not in anyone's feed until published.
   assert.equal((await c.query('select 1 from public.feed_candidates() where video_id = $1', [v.id])).rowCount, 0);
 }));
+
+const quoteJson = (lines, rateBps = 1000) => {
+  const subtotal = lines.reduce((a, l) => a + l.unitPriceCents * l.quantity, 0);
+  const commission = Math.round(subtotal * rateBps / 10000);
+  return {
+    pricingVersion: 'test', currency: 'AUD', subtotalCents: subtotal, serviceFeeCents: 99, deliveryFeeCents: 0, discountCents: 0,
+    totalCents: subtotal + 99, gstCents: Math.round(subtotal / 11) + 9, commissionRateBps: rateBps, commissionCents: commission,
+    restaurantNetCents: subtotal - commission,
+    lines: lines.map((l) => ({ ...l, lineTotalCents: l.unitPriceCents * l.quantity, options: [], notes: null })),
+  };
+};
+
+test('ordering: idempotent creation, payment confirmation, creator attribution, restaurant notified', () => tx(async (c) => {
+  const cust = await createUser(c, 'orderer@example.com');
+  await as(c, cust);
+  const denied = await expectDenied(c, `select public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, null, '{}'::jsonb, gen_random_uuid())`, [cust]);
+  assert.equal(denied.error?.code, '42501', 'customers cannot create orders directly');
+
+  await asSuperuser(c);
+  const key = '33333333-3333-4333-8333-333333333333';
+  const q = quoteJson([{ menuItemId: (await c.query(`select ${id('i-smash-classic')} as x`)).rows[0].x, name: 'Classic', unitPriceCents: 1690, quantity: 2, sourceVideoId: (await c.query(`select ${id('video-v1')} as x`)).rows[0].x }]);
+  const args = [cust, q, key];
+  const sql = `select * from public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', 'no onions', null, ${id('video-v1')}, $2::jsonb, $3)`;
+  const o1 = (await c.query(sql, args)).rows[0];
+  const o2 = (await c.query(sql, args)).rows[0];
+  assert.equal(o1.id, o2.id, 'retry with same idempotency key returns the same order');
+  assert.equal(o1.status, 'pending_payment');
+  assert.equal(o1.total_cents, 3479);
+
+  const wrong = await expectDenied(c, `select public.confirm_order_payment($1, 'simulated', 'sim_1', 100, 0, true)`, [o1.id]);
+  assert.match(wrong.error?.message ?? '', /does not match/);
+  const paid = (await c.query(`select * from public.confirm_order_payment($1, 'simulated', 'sim_1', 3479, 338, true)`, [o1.id])).rows[0];
+  assert.equal(paid.status, 'placed');
+  assert.ok(paid.placed_at);
+  // duplicate webhook is a no-op
+  assert.equal((await c.query(`select status from public.confirm_order_payment($1, 'simulated', 'sim_1', 3479, 338, true)`, [o1.id])).rows[0].status, 'placed');
+  assert.equal((await c.query('select count(*)::int n from public.payments where order_id = $1', [o1.id])).rows[0].n, 1);
+
+  const attr = (await c.query('select creator_id, attributed_revenue_cents from public.creator_attributions where order_id = $1', [o1.id])).rows[0];
+  assert.equal(attr.attributed_revenue_cents, 3380);
+  assert.equal(attr.creator_id, (await c.query(`select ${id('user-demo-creator')} as x`)).rows[0].x);
+  const stats = (await c.query(`select orders, revenue_cents from public.video_stats where video_id = ${id('video-v1')}`)).rows[0];
+  assert.equal(Number(stats.orders), 1);
+  assert.equal(Number(stats.revenue_cents), 3380);
+  assert.equal((await c.query(`select count(*)::int n from public.notifications where type = 'new_order' and user_id = ${id('user-demo-owner')}`)).rows[0].n, 1);
+
+  const bad = await expectDenied(c, `insert into public.payments (order_id, provider, amount_cents, is_test_mode, status) values ($1, 'simulated', 1, false, 'succeeded')`, [o1.id]);
+  assert.ok(bad.error, 'simulated payments can never be live');
+}));
+
+test('ordering: items from another restaurant are rejected', () => tx(async (c) => {
+  const cust = await createUser(c, 'mixer@example.com');
+  await asSuperuser(c);
+  const q = quoteJson([{ menuItemId: (await c.query(`select ${id('i-sushi-don')} as x`)).rows[0].x, name: 'Don', unitPriceCents: 1900, quantity: 1 }]);
+  const res = await expectDenied(c, `select public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, null, $2::jsonb, gen_random_uuid())`, [cust, q]);
+  assert.match(res.error?.message ?? '', /another restaurant/);
+}));
+
+test('cancellation: customer before acceptance, restaurant rejection; both create refund requests', () => tx(async (c) => {
+  const cust = await createUser(c, 'canceller@example.com');
+  await asSuperuser(c);
+  const mk = async () => {
+    const q = quoteJson([{ menuItemId: (await c.query(`select ${id('i-smash-fries')} as x`)).rows[0].x, name: 'Fries', unitPriceCents: 990, quantity: 1 }]);
+    const o = (await c.query(`select * from public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, null, $2::jsonb, gen_random_uuid())`, [cust, q])).rows[0];
+    await c.query(`select public.confirm_order_payment($1, 'simulated', $2, 1089, 99, true)`, [o.id, `sim_${o.id}`]);
+    return o.id;
+  };
+  const a = await mk(), b = await mk();
+
+  await as(c, cust);
+  await c.query(`select public.customer_cancel_order($1, 'Changed my mind')`, [a]);
+  await as(c, (await c.query(`select ${id('user-demo-owner')} as x`)).rows[0].x);
+  await c.query(`select public.restaurant_update_order_status($1, 'rejected', 'Out of buns')`, [b]);
+
+  await asSuperuser(c);
+  const refunds = (await c.query('select order_id, reason, amount_cents, status from public.refunds where order_id = any($1) order by reason', [[a, b]])).rows;
+  assert.deepEqual(refunds.map((r) => [r.reason, r.amount_cents, r.status]), [['customer_request', 1089, 'requested'], ['restaurant_rejected', 1089, 'requested']]);
+
+  // Customer can no longer cancel after acceptance.
+  const cId = await mk();
+  await as(c, (await c.query(`select ${id('user-demo-owner')} as x`)).rows[0].x);
+  await c.query(`select public.restaurant_update_order_status($1, 'accepted')`, [cId]);
+  await as(c, cust);
+  const late = await expectDenied(c, `select public.customer_cancel_order($1)`, [cId]);
+  assert.match(late.error?.message ?? '', /already been accepted/);
+  const other = await createUser(c, 'notmine@example.com');
+  await as(c, other);
+  const notMine = await expectDenied(c, `select public.customer_cancel_order($1)`, [a]);
+  assert.equal(notMine.error?.code, 'P0002');
+}));
