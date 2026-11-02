@@ -77,3 +77,27 @@ Each phase lists what was actually built, how it was verified, and what is incom
 - The default weights are reasoned starting points, **not yet tuned on real data**. They must be evaluated during the pilot with the logged impressions (A/B by `model_version`).
 - The profile is computed per request from up to 120 days of signals — fine for a pilot; needs precomputation (`user_feature_affinities`) or caching at scale.
 - Exploration currently uses cuisine novelty only.
+
+## Phase 4 — Restaurant onboarding, menus and creator uploads
+
+### Built
+- **Restaurant onboarding (web)**: business details with ABN checksum validation, legal name, cuisines, price level, Brisbane suburb, address, phone and prep time. Creates the restaurant (always `draft`, platform-default commission, enforced by the database), location, default hours and menu, and makes the creator the owner.
+- **Restaurant dashboard (web)** per restaurant: overview with a go-live checklist and counts; **menu** management (sections, GST-inclusive prices, cuisine, dish type, tags, dietary labels, allergens, spice, GST-free flag, sold-out toggle that staff can use); **item photos** uploaded straight from the browser to storage under the owner's session; **customisations** (option groups with min/max and price changes); **hours** (weekly schedule incl. past-midnight, pause/resume orders, prep time, pickup, advance orders); **videos & creator tags** (approve/reject tags, upload existing promo videos with a rights confirmation, per-video stats); **verification** (licence number + private document upload, submits for review).
+- **Admin (web)**: restaurant verification queue with signed links to private documents and approve/reject (audited, reason required); video moderation queue with previews, publish/reject via the API.
+- **Publishing pipeline**: uploads land in a private bucket; on approval the API copies the file server-side to the public playback bucket, sets the playback URL and publishes (audited). Rejected/removed videos are taken down.
+- **API**: `GET /v1/restaurants` (nearby + search by name, dish, cuisine, suburb; searches stored only with consent), `GET /v1/restaurants/:id` (details, today's hours, video menu with photo fallback, follow state), `PUT /v1/restaurants/:id/follow`, `GET /v1/menu-items/:id` (customisations + live orderability), `GET /v1/admin/videos`, `POST /v1/admin/videos/:id/moderate` (admin-only).
+- **SQL**: `nearby_restaurants()`, `restaurant_video_menu()` (best approved video per item, otherwise photo), `restaurant_tag_requests()` (members only).
+- **Mobile**: Discover tab (search, near me with explicit location permission, open/busy/closed, halal, video counts, matched dishes); restaurant page with video menu, photo fallback, today's hours and follow; full-screen video player; **Create** tab (record or choose a video up to 3 minutes, caption with hashtags, tag a verified restaurant's dish, sponsorship disclosure, restaurant-reuse permission, rights confirmation, streaming upload from disk with progress); **My videos** (review status, reviewer notes, tag status, views/craves/likes/shares, creator handle, affiliate application).
+
+### Tested
+- Database (32 tests, +6): discovery ordering/search/injection safety, video menu fallback and unverified hiding, tag-request access, a full onboarding → verification → discoverable flow as real users under RLS, and the creator upload flow (pending review, pending tag, sponsorship disclosure enforced, not in feed until published).
+- API (31 tests, +6): search logging only with consent, 404 handling, follow scoping, admin-only moderation, reason required to reject, missing-upload handling.
+- Core (56 tests, +6): ABN checksum, slugs, AU phone numbers, suburb data sanity.
+- Web dashboard compiles (`next build`, 12 routes); mobile bundles for Android.
+
+### Not yet verified / limitations
+- The web dashboard and the upload/moderation pipeline have **not been exercised against a live Supabase project** (no Docker here). Storage behaviour (upload endpoint, cross-bucket copy) is per Supabase's API and needs a live run.
+- Restaurant location uses the suburb's centre point; a geocoding provider is needed before delivery.
+- No video transcoding or thumbnails yet: videos are served as uploaded. Uploads up to 500 MB are accepted; a streaming provider (HLS, thumbnails, compression) is needed before scale.
+- No automatic content scanning; moderation is manual. Notifications to uploaders and restaurants (tag requests, decisions) are recorded in the dashboard only — push/email arrive with Phase 5.
+- Creator attribution of orders and affiliate commissions are not live (affiliate applications are recorded only).

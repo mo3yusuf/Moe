@@ -12,6 +12,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     <div className="container layout">
       <nav className="side" aria-label="Admin">
         <Link href="/admin">Overview</Link>
+        <Link href="/admin/verifications">Restaurant verification</Link>
+        <Link href="/admin/videos">Video moderation</Link>
       </nav>
       <main>{children}</main>
     </div>

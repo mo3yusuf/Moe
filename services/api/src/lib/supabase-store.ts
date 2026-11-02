@@ -200,6 +200,131 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
         .eq('id', userId).is('onboarding_completed_at', null);
     },
 
+    async nearbyRestaurants(q) {
+      const { data, error } = await admin.rpc('nearby_restaurants', {
+        p_lat: q.lat ?? null, p_lng: q.lng ?? null, p_max_km: q.maxKm, p_query: q.query ?? null, p_limit: q.limit,
+      });
+      if (error) throw new Error(`nearby: ${error.message}`);
+      return (data ?? []).map((r: any) => ({
+        id: r.restaurant_id, name: r.name, slug: r.slug, description: r.description, logoUrl: r.logo_url, coverUrl: r.cover_url,
+        cuisines: r.cuisines ?? [], priceLevel: r.price_level, halalCertified: !!r.halal_certified, locationId: r.location_id,
+        suburb: r.suburb, distanceKm: r.distance_km == null ? null : Math.round(r.distance_km * 10) / 10, isOpen: !!r.is_open,
+        acceptingOrders: !!r.accepting_orders, videoCount: Number(r.video_count ?? 0), matchedItems: r.matched_items ?? [],
+      }));
+    },
+
+    async logSearch(userId, query, resultCount) {
+      await admin.from('search_events').insert({ user_id: userId, query: query.slice(0, 100), result_count: resultCount });
+    },
+
+    async restaurantDetail(restaurantId, userId) {
+      const { data: r, error } = await admin.from('restaurants')
+        .select('id, name, slug, description, logo_url, cover_url, cuisines, price_level, accepts_advance_orders, status, restaurant_locations(id, address_line1, suburb, region, postcode, is_accepting_orders, location_opening_hours(day_of_week, opens_at, closes_at)), restaurant_certifications(certification, verified_at)')
+        .eq('id', restaurantId).maybeSingle();
+      if (error) throw new Error(`restaurant: ${error.message}`);
+      if (!r || r.status !== 'verified') return null;
+      const loc: any = (r as any).restaurant_locations?.[0] ?? null;
+      const [menu, follow, open] = await Promise.all([
+        admin.rpc('restaurant_video_menu', { p_restaurant_id: restaurantId }),
+        admin.from('restaurant_follows').select('user_id').eq('user_id', userId).eq('restaurant_id', restaurantId).maybeSingle(),
+        loc ? admin.rpc('location_is_open', { p_location_id: loc.id }) : Promise.resolve({ data: false }),
+      ]);
+      if (menu.error) throw new Error(`menu: ${menu.error.message}`);
+      return {
+        restaurant: {
+          id: r.id, name: r.name, slug: r.slug, description: r.description, logoUrl: r.logo_url, coverUrl: r.cover_url,
+          cuisines: r.cuisines ?? [], priceLevel: r.price_level, acceptsAdvanceOrders: r.accepts_advance_orders,
+          halalCertified: ((r as any).restaurant_certifications ?? []).some((c: any) => c.certification === 'halal' && c.verified_at),
+          locationId: loc?.id ?? null, suburb: loc?.suburb ?? null, isOpen: !!open.data, acceptingOrders: !!loc?.is_accepting_orders,
+          address: loc ? `${loc.address_line1}, ${loc.suburb} ${loc.region} ${loc.postcode}` : null,
+          hours: (loc?.location_opening_hours ?? []).map((h: any) => ({ dayOfWeek: h.day_of_week, opensAt: h.opens_at.slice(0, 5), closesAt: h.closes_at.slice(0, 5) }))
+            .sort((a: any, b: any) => a.dayOfWeek - b.dayOfWeek || a.opensAt.localeCompare(b.opensAt)),
+        },
+        menu: (menu.data ?? []).map((m: any) => ({
+          menuItemId: m.menu_item_id, section: m.section, name: m.name, description: m.description, priceCents: m.price_cents,
+          currency: m.currency, imageUrl: m.image_url, dietaryTags: m.dietary_tags ?? [], spiceLevel: m.spice_level,
+          isAvailable: m.is_available, videoId: m.video_id, playbackUrl: m.playback_url, thumbnailUrl: m.thumbnail_url, hasOptions: m.has_options,
+        })),
+        following: !!follow.data,
+      };
+    },
+
+    async setFollow(userId, restaurantId, follow) {
+      const res = follow
+        ? await admin.from('restaurant_follows').upsert({ user_id: userId, restaurant_id: restaurantId }, { onConflict: 'user_id,restaurant_id', ignoreDuplicates: true })
+        : await admin.from('restaurant_follows').delete().eq('user_id', userId).eq('restaurant_id', restaurantId);
+      if (res.error) throw new Error(`follow: ${res.error.message}`);
+    },
+
+    async menuItemDetail(menuItemId) {
+      const { data: m, error } = await admin.from('menu_items')
+        .select('id, restaurant_id, name, description, price_cents, currency, image_url, dietary_tags, allergens, spice_level, is_available, restaurants(name, status, restaurant_locations(id)), menu_item_option_groups(id, name, min_select, max_select, sort_order, menu_item_options(id, name, price_delta_cents, is_available, sort_order))')
+        .eq('id', menuItemId).maybeSingle();
+      if (error) throw new Error(`menu item: ${error.message}`);
+      const rest: any = (m as any)?.restaurants;
+      if (!m || rest?.status !== 'verified') return null;
+      const locationId = rest.restaurant_locations?.[0]?.id ?? null;
+      const orderable = locationId ? (await admin.rpc('menu_item_orderable', { p_menu_item_id: m.id, p_location_id: locationId })).data === true : false;
+      return {
+        id: m.id, restaurantId: m.restaurant_id, restaurantName: rest.name, locationId, name: m.name, description: m.description,
+        priceCents: m.price_cents, currency: m.currency, imageUrl: m.image_url, dietaryTags: m.dietary_tags ?? [], allergens: m.allergens ?? [],
+        spiceLevel: m.spice_level, isAvailable: m.is_available, orderable,
+        optionGroups: ((m as any).menu_item_option_groups ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order).map((g: any) => ({
+          id: g.id, name: g.name, minSelect: g.min_select, maxSelect: g.max_select,
+          options: (g.menu_item_options ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order)
+            .map((o: any) => ({ id: o.id, name: o.name, priceDeltaCents: o.price_delta_cents, isAvailable: o.is_available })),
+        })),
+      };
+    },
+
+    async isAdmin(userId) {
+      const { data } = await admin.from('user_roles').select('role').eq('user_id', userId).eq('role', 'admin').maybeSingle();
+      return !!data;
+    },
+
+    async listVideosForModeration(status, limit) {
+      const { data, error } = await admin.from('videos')
+        .select('id, uploader_id, caption, source, is_sponsored, sponsor_disclosure, created_at, duration_ms, storage_path, video_menu_items(status, menu_items(name), restaurants(name))')
+        .eq('status', status).order('created_at', { ascending: true }).limit(limit);
+      if (error) throw new Error(`moderation list: ${error.message}`);
+      const ids = (data ?? []).map((v) => v.id);
+      const reports = ids.length ? await admin.from('content_reports').select('target_id').eq('target_type', 'video').eq('status', 'open').in('target_id', ids) : { data: [] };
+      return Promise.all((data ?? []).map(async (v: any) => {
+        const signed = v.storage_path ? await admin.storage.from('video-uploads').createSignedUrl(v.storage_path, 3600) : null;
+        return {
+          id: v.id, uploaderId: v.uploader_id, caption: v.caption, source: v.source, isSponsored: v.is_sponsored,
+          sponsorDisclosure: v.sponsor_disclosure, createdAt: v.created_at, durationMs: v.duration_ms,
+          previewUrl: signed?.data?.signedUrl ?? null,
+          tags: (v.video_menu_items ?? []).map((t: any) => ({ menuItemName: t.menu_items?.name ?? '', restaurantName: t.restaurants?.name ?? '', status: t.status })),
+          openReports: (reports.data ?? []).filter((r: any) => r.target_id === v.id).length,
+        };
+      }));
+    },
+
+    async moderateVideo(adminId, videoId, decision, notes) {
+      const { data: v } = await admin.from('videos').select('id, storage_path, status').eq('id', videoId).maybeSingle();
+      if (!v) return 'not_found';
+      const update: Record<string, unknown> = { moderation_notes: notes };
+      if (decision === 'publish') {
+        if (!v.storage_path) return 'missing_upload';
+        // Copy the private upload to the public playback bucket. A streaming provider (HLS) replaces this step later.
+        const dest = `${videoId}.mp4`;
+        await admin.storage.from('video-playback').remove([dest]); // copy() does not overwrite
+        const { error: cpErr } = await admin.storage.from('video-uploads').copy(v.storage_path, dest, { destinationBucket: 'video-playback' });
+        if (cpErr) return /not.?found/i.test(cpErr.message) ? 'missing_upload' : Promise.reject(new Error(`publish copy: ${cpErr.message}`));
+        update.playback_url = admin.storage.from('video-playback').getPublicUrl(dest).data.publicUrl;
+        update.status = 'published';
+        update.published_at = new Date().toISOString();
+      } else {
+        update.status = decision === 'reject' ? 'rejected' : 'removed';
+        if (v.status === 'published') await admin.storage.from('video-playback').remove([`${videoId}.mp4`]);
+      }
+      const { error } = await admin.from('videos').update(update).eq('id', videoId);
+      if (error) throw new Error(`moderate: ${error.message}`);
+      await admin.from('audit_log').insert({ actor_id: adminId, action: `video_${decision}`, entity_type: 'video', entity_id: videoId, details: { notes } });
+      return 'ok';
+    },
+
     async listSaved(userId, collection) {
       const { data, error } = await admin.from('saved_meals').select('video_id, menu_item_id, created_at, collection, menu_items(name, price_cents, currency, is_available, restaurants(name))')
         .eq('user_id', userId).eq('collection', collection).order('created_at', { ascending: false }).limit(200);

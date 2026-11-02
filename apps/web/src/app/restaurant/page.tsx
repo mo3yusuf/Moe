@@ -19,10 +19,10 @@ export default async function RestaurantHome() {
       <h1 style={{ margin: 0 }}>Your restaurants</h1>
       <div className="grid">
         {viewer.restaurants.map((r) => (
-          <div key={r.id} className="card stack">
+          <Link key={r.id} href={`/restaurant/${r.id}`} className="card stack" style={{ textDecoration: 'none' }}>
             <strong style={{ fontSize: 18 }}>{r.name}</strong>
             <div className="row"><span className={`badge ${STATUS_BADGE[r.status] ?? ''}`}>{r.status.replace('_', ' ')}</span><span className="muted">{r.role}</span></div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

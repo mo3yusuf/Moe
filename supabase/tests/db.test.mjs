@@ -493,3 +493,99 @@ test('user_ranking_signals: own signals only, enriched with item features, respe
   const after = await c.query('select kind from public.user_ranking_signals($1)', [u]);
   assert.deepEqual(after.rows.map((r) => r.kind), [], 'order kept but ignored after reset; likes before reset ignored');
 }));
+
+test('nearby_restaurants: verified only, distance-ordered, searchable by dish, cuisine, suburb', () => tx(async (c) => {
+  await as(c, 'anon');
+  const all = await c.query(`select name, distance_km from public.nearby_restaurants(-27.4575, 153.0355, 50, null, 50)`);
+  assert.equal(all.rowCount, 8);
+  assert.equal(all.rows[0].name, 'Valley Smash Burgers', 'closest first');
+  assert.ok(!all.rows.some((r) => r.name.includes('pending')));
+
+  const sushi = await c.query(`select name, matched_items from public.nearby_restaurants(null, null, 50, 'sushi', 50)`);
+  assert.deepEqual(sushi.rows.map((r) => r.name), ['Kurilpa Sushi Bar']);
+  const tacos = await c.query(`select name, matched_items from public.nearby_restaurants(null, null, 50, 'birria', 50)`);
+  assert.deepEqual(tacos.rows[0].matched_items, ['Birria Tacos with Consommé (3)']);
+  const suburb = await c.query(`select name from public.nearby_restaurants(null, null, 50, 'sunnybank', 50)`);
+  assert.deepEqual(suburb.rows.map((r) => r.name), ['Sunnybank Dumpling House']);
+  const injection = await c.query(`select count(*)::int n from public.nearby_restaurants(null, null, 50, $1, 50)`, ["%' or 1=1 --"]);
+  assert.equal(injection.rows[0].n, 0);
+}));
+
+test('restaurant_video_menu: photo fallback for items without video; hides unverified restaurants', () => tx(async (c) => {
+  await as(c, 'anon');
+  const menu = await c.query(`select name, video_id, has_options from public.restaurant_video_menu(${id('r-valley-smash')})`);
+  const byName = Object.fromEntries(menu.rows.map((r) => [r.name, r]));
+  assert.ok(byName['Classic Double Smash'].video_id, 'has a video');
+  assert.equal(byName['Classic Double Smash'].has_options, true);
+  assert.equal(byName['Loaded Fries'].video_id, null, 'no video -> photo menu');
+  const pending = await c.query(`select * from public.restaurant_video_menu(${id('r-pending-pho')})`);
+  assert.equal(pending.rowCount, 0);
+}));
+
+test('restaurant_tag_requests: members only', () => tx(async (c) => {
+  const u = await createUser(c, 'tags@example.com');
+  await as(c, u);
+  const denied = await expectDenied(c, `select * from public.restaurant_tag_requests(${id('r-gabba-charcoal')})`);
+  assert.equal(denied.error?.code, '42501');
+  await asSuperuser(c);
+  await c.query(`insert into public.restaurant_members (restaurant_id, user_id, role) values (${id('r-gabba-charcoal')}, $1, 'manager')`, [u]);
+  await as(c, u);
+  const rows = (await c.query(`select status, creator_handle from public.restaurant_tag_requests(${id('r-gabba-charcoal')})`)).rows;
+  assert.equal(rows[0].status, 'pending', 'pending requests first');
+  assert.ok(rows.some((r) => r.status === 'approved'));
+}));
+
+test('restaurant onboarding flow (as the web dashboard performs it) works under RLS', () => tx(async (c) => {
+  const owner = await createUser(c, 'newowner@example.com');
+  await as(c, owner);
+  const city = (await c.query(`select id from public.cities where name = 'Brisbane'`)).rows[0].id;
+  const rid = (await c.query(`insert into public.restaurants (name, slug, legal_name, abn, cuisines, price_level, created_by)
+    values ('New Cafe', 'new-cafe', 'New Cafe Pty Ltd', '51824753556', '{italian}', 2, $1) returning id`, [owner])).rows[0].id;
+  const loc = (await c.query(`insert into public.restaurant_locations (restaurant_id, city_id, address_line1, suburb, region, postcode, lat, lng)
+    values ($1, $2, '1 Test St', 'Milton', 'QLD', '4064', -27.47, 153.003) returning id`, [rid, city])).rows[0].id;
+  await c.query(`insert into public.location_opening_hours (location_id, day_of_week, opens_at, closes_at) select $1, d, '11:00', '21:00' from generate_series(0,6) d`, [loc]);
+  await c.query(`insert into public.menus (restaurant_id, name) values ($1, 'Main menu')`, [rid]);
+  const item = (await c.query(`insert into public.menu_items (restaurant_id, name, price_cents, dietary_tags) values ($1, 'Gnocchi', 2600, '{vegetarian}') returning id`, [rid])).rows[0].id;
+  const g = (await c.query(`insert into public.menu_item_option_groups (menu_item_id, name, min_select, max_select) values ($1, 'Size', 1, 1) returning id`, [item])).rows[0].id;
+  await c.query(`insert into public.menu_item_options (group_id, name, price_delta_cents) values ($1, 'Large', 400)`, [g]);
+  await c.query(`insert into storage.objects (bucket_id, name) values ('verification-docs', $1)`, [`${rid}/licence.pdf`]);
+  await c.query(`insert into storage.objects (bucket_id, name) values ('menu-images', $1)`, [`${rid}/${item}.jpg`]);
+  await c.query(`insert into public.restaurant_verifications (restaurant_id, submitted_by, document_paths, food_business_licence_number) values ($1, $2, $3, 'BCC-123')`, [rid, owner, [`${rid}/licence.pdf`]]);
+  await c.query(`update public.restaurants set status = 'pending_verification' where id = $1`, [rid]);
+
+  // Still invisible to customers and not in discovery.
+  const customer = await createUser(c, 'cust2@example.com');
+  await as(c, customer);
+  assert.equal((await c.query(`select 1 from public.nearby_restaurants(null, null, 50, 'new cafe', 10)`)).rowCount, 0);
+  const res = await expectDenied(c, `insert into storage.objects (bucket_id, name) values ('menu-images', $1)`, [`${rid}/hack.jpg`]);
+  assert.ok(res.error, 'non-members cannot upload menu images');
+
+  // Admin approves -> visible.
+  const admin = await createUser(c, 'admin3@example.com');
+  await asSuperuser(c);
+  await c.query(`insert into public.user_roles (user_id, role) values ($1, 'admin')`, [admin]);
+  await as(c, admin);
+  const vid = (await c.query('select id from public.restaurant_verifications where restaurant_id = $1', [rid])).rows[0].id;
+  await c.query('select public.admin_decide_verification($1, true, null)', [vid]);
+  await as(c, customer);
+  assert.equal((await c.query(`select 1 from public.nearby_restaurants(null, null, 50, 'gnocchi', 10)`)).rowCount, 1);
+}));
+
+test('creator upload flow (as the mobile app performs it) ends pending review with a pending tag', () => tx(async (c) => {
+  const u = await createUser(c, 'uploader@example.com');
+  await as(c, u);
+  await c.query(`insert into public.creators (user_id, handle) values ($1, 'newcreator')`, [u]);
+  const v = (await c.query(`insert into public.videos (uploader_id, source, caption, hashtags, duration_ms, is_sponsored, sponsor_disclosure)
+    values ($1, 'customer', 'Great dumplings #dumplings', '{dumplings}', 20000, true, 'Paid partnership with Sunnybank Dumpling House') returning id, status`, [u])).rows[0];
+  assert.equal(v.status, 'uploading');
+  await c.query(`insert into storage.objects (bucket_id, name) values ('video-uploads', $1)`, [`${u}/${v.id}.mp4`]);
+  await c.query(`update public.videos set storage_path = $2, status = 'pending_review', rights_attested_at = now() where id = $1`, [v.id, `${u}/${v.id}.mp4`]);
+  await c.query(`insert into public.video_menu_items (video_id, menu_item_id, restaurant_id) values ($1, ${id('i-dump-xlb')}, ${id('r-sunnybank-dumpling')})`, [v.id]);
+  const tag = (await c.query('select status from public.video_menu_items where video_id = $1', [v.id])).rows[0];
+  assert.equal(tag.status, 'pending');
+  // Sponsored without disclosure is rejected by the database.
+  const bad = await expectDenied(c, `insert into public.videos (uploader_id, is_sponsored) values ($1, true)`, [u]);
+  assert.ok(bad.error);
+  // Not in anyone's feed until published.
+  assert.equal((await c.query('select 1 from public.feed_candidates() where video_id = $1', [v.id])).rowCount, 0);
+}));

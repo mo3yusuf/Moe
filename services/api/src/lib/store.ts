@@ -63,6 +63,39 @@ export interface ImpressionRow {
   reasons: string[];
 }
 
+export interface RestaurantSummary {
+  id: string; name: string; slug: string; description: string | null; logoUrl: string | null; coverUrl: string | null;
+  cuisines: string[]; priceLevel: number; halalCertified: boolean; locationId: string | null; suburb: string | null;
+  distanceKm: number | null; isOpen: boolean; acceptingOrders: boolean; videoCount: number; matchedItems: string[];
+}
+
+export interface VideoMenuEntry {
+  menuItemId: string; section: string; name: string; description: string | null; priceCents: number; currency: string;
+  imageUrl: string | null; dietaryTags: string[]; spiceLevel: number | null; isAvailable: boolean;
+  videoId: string | null; playbackUrl: string | null; thumbnailUrl: string | null; hasOptions: boolean;
+}
+
+export interface RestaurantDetail {
+  restaurant: Omit<RestaurantSummary, 'distanceKm' | 'matchedItems' | 'videoCount'> & {
+    address: string | null; hours: { dayOfWeek: number; opensAt: string; closesAt: string }[]; acceptsAdvanceOrders: boolean;
+  };
+  menu: VideoMenuEntry[];
+  following: boolean;
+}
+
+export interface MenuItemDetail {
+  id: string; restaurantId: string; restaurantName: string; locationId: string | null; name: string; description: string | null;
+  priceCents: number; currency: string; imageUrl: string | null; dietaryTags: string[]; allergens: string[]; spiceLevel: number | null;
+  isAvailable: boolean; orderable: boolean;
+  optionGroups: { id: string; name: string; minSelect: number; maxSelect: number; options: { id: string; name: string; priceDeltaCents: number; isAvailable: boolean }[] }[];
+}
+
+export interface ModerationVideo {
+  id: string; uploaderId: string; caption: string | null; source: string; isSponsored: boolean; sponsorDisclosure: string | null;
+  createdAt: string; durationMs: number | null; previewUrl: string | null; tags: { menuItemName: string; restaurantName: string; status: string }[];
+  openReports: number;
+}
+
 export interface DataStore {
   getMe(userId: string): Promise<MeResult | null>;
   hasConsent(userId: string, consentType: string): Promise<boolean>;
@@ -73,6 +106,15 @@ export interface DataStore {
   listSaved(userId: string, collection: 'cravings' | 'saved'): Promise<CravingRow[]>;
   loadRankingContext(userId: string, opts: { personalised: boolean; since: Date }): Promise<RankingContext>;
   recordImpressions(userId: string, feedRequestId: string, modelVersion: string, rows: ImpressionRow[]): Promise<void>;
+  nearbyRestaurants(q: { lat?: number; lng?: number; maxKm: number; query?: string; limit: number }): Promise<RestaurantSummary[]>;
+  logSearch(userId: string, query: string, resultCount: number): Promise<void>;
+  restaurantDetail(restaurantId: string, userId: string): Promise<RestaurantDetail | null>;
+  setFollow(userId: string, restaurantId: string, follow: boolean): Promise<void>;
+  menuItemDetail(menuItemId: string): Promise<MenuItemDetail | null>;
+  isAdmin(userId: string): Promise<boolean>;
+  listVideosForModeration(status: 'pending_review' | 'published' | 'rejected', limit: number): Promise<ModerationVideo[]>;
+  /** Publishes (copying the upload to the public playback bucket), rejects or removes a video. Audited. */
+  moderateVideo(adminId: string, videoId: string, decision: 'publish' | 'reject' | 'remove', notes: string | null): Promise<'ok' | 'not_found' | 'missing_upload'>;
   getPreferences(userId: string): Promise<ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }>;
   setPreferences(userId: string, prefs: ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }): Promise<void>;
 }

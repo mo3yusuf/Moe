@@ -26,6 +26,9 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="preferences" options={{ headerShown: true, title: 'Food preferences' }} />
         <Stack.Screen name="taste-profile" options={{ headerShown: true, title: 'Your taste profile' }} />
+        <Stack.Screen name="my-videos" options={{ headerShown: true, title: 'My videos' }} />
+        <Stack.Screen name="restaurant/[id]" options={{ headerShown: true, title: '' }} />
+        <Stack.Screen name="watch" options={{ headerShown: true, presentation: 'modal' }} />
         <Stack.Screen name="cravings" options={{ headerShown: true, title: 'Your Cravings' }} />
         <Stack.Screen name="privacy" options={{ headerShown: true, title: 'Privacy & personalisation', presentation: 'modal' }} />
       </Stack.Protected>
