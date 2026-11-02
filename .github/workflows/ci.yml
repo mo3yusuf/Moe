@@ -13,10 +13,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Install PostgreSQL 16 (for database tests)
+      - name: Ensure PostgreSQL server binaries (for database tests)
+        # GitHub's Ubuntu images ship PostgreSQL; supabase/tests/run.sh uses the newest installed version.
+        # Fall back to the distro's default version rather than pinning one the image may not carry.
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-16
+          if ls -d /usr/lib/postgresql/*/bin >/dev/null 2>&1; then
+            ls -d /usr/lib/postgresql/*/bin
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql
+          fi
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
