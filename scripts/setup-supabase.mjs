@@ -6,8 +6,11 @@
  * Uses the Supabase Management API over HTTPS, so it works where direct Postgres connections don't.
  * Required env:
  *   SUPABASE_URL            https://<project-ref>.supabase.co
- *   SUPABASE_ACCESS_TOKEN   personal access token (supabase.com → Account → Access Tokens)
+ *   SUPABASE_ACCESS_TOKEN   personal access token (supabase.com → Account → Access Tokens).
+ *                           May be omitted when a network proxy injects the Authorization header
+ *                           for api.supabase.com (e.g. a Claude Code "network secret").
  * Optional:
+ *   ADMIN_EMAIL             grant the CRAVE admin role to this (already signed-up) account and stop
  *   APP_URL                 public URL of the web app (for sign-up confirmation links)
  *   DRY_RUN=1               list what would run without changing anything
  */
@@ -19,22 +22,36 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const url = process.env.SUPABASE_URL ?? '';
 const token = process.env.SUPABASE_ACCESS_TOKEN ?? '';
 const ref = url.match(/^https:\/\/([a-z0-9]+)\.supabase\.co\/?$/)?.[1];
-if (!ref || !token) {
+if (!ref) {
   console.error('Set SUPABASE_URL (https://<ref>.supabase.co) and SUPABASE_ACCESS_TOKEN.');
   process.exit(1);
 }
 const dry = process.env.DRY_RUN === '1';
 const api = `https://api.supabase.com/v1/projects/${ref}`;
+const authHeaders = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 
 async function sql(query) {
   const res = await fetch(`${api}/database/query`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({ query }),
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`SQL failed (${res.status}): ${text.slice(0, 800)}`);
   return text ? JSON.parse(text) : null;
+}
+
+const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+if (adminEmail) {
+  if (!/^[^\s@']+@[^\s@']+$/.test(adminEmail)) { console.error('ADMIN_EMAIL looks invalid.'); process.exit(1); }
+  const rows = await sql(`with u as (select id from auth.users where lower(email) = '${adminEmail}'),
+    granted as (insert into public.user_roles (user_id, role) select id, 'admin' from u on conflict do nothing returning user_id)
+    select (select count(*) from u)::int as found`);
+  if (!rows[0].found) { console.error(`No account for ${adminEmail}. Sign up in the app first.`); process.exit(1); }
+  await sql(`insert into public.audit_log (actor_id, action, entity_type, entity_id, details)
+    select null, 'admin_granted', 'user', id::text, '{"via":"setup-supabase script"}'::jsonb from auth.users where lower(email) = '${adminEmail}'`);
+  console.log(`✓ ${adminEmail} is now a CRAVE admin`);
+  process.exit(0);
 }
 
 const migrations = readdirSync(join(root, 'supabase/migrations')).filter((f) => f.endsWith('.sql')).sort();
@@ -63,7 +80,7 @@ if (!dry) {
   if (appUrl) {
     const res = await fetch(`${api}/config/auth`, {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ site_url: appUrl, uri_allow_list: `${appUrl}/**,crave://**`, password_min_length: 10 }),
     });
     console.log(res.ok ? `  ✓ auth redirect URL set to ${appUrl}` : `  ! could not update auth settings (${res.status}): ${(await res.text()).slice(0, 300)}`);
