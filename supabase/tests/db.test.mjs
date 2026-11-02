@@ -683,7 +683,7 @@ test('cancellation: customer before acceptance, restaurant rejection; both creat
 async function paidOrder(c, customer, { item = 'i-smash-classic', price = 1690, qty = 1, video = null } = {}) {
   await asSuperuser(c);
   const q = quoteJson([{ menuItemId: (await c.query(`select ${id(item)} as x`)).rows[0].x, name: item, unitPriceCents: price, quantity: qty, sourceVideoId: video }]);
-  const o = (await c.query(`select * from public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, $3, $2::jsonb, gen_random_uuid())`, [customer, q, video])).rows[0];
+  const o = (await c.query(`select * from public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, $3::uuid, $2::jsonb, gen_random_uuid())`, [customer, q, video])).rows[0];
   await c.query(`select public.confirm_order_payment($1, 'simulated', $2, $3, 0, true)`, [o.id, `sim_${o.id}`, o.total_cents]);
   return o;
 }
@@ -923,4 +923,109 @@ test('security: users cannot read other users’ consent; every SECURITY DEFINER
   const unguarded = rows.filter((r) => !allow.has(r.proname)
     && !/(is_admin\(\)|request_is_privileged\(\)|auth\.uid\(\)|is_restaurant_member|can_manage_restaurant)/.test(r.def)).map((r) => r.proname);
   assert.deepEqual(unguarded, []);
+}));
+
+test('creator commissions: created on completion for approved affiliates, approved after the window, paid once, voided on refund', () => tx(async (c) => {
+  const cust = await createUser(c, 'aff-buyer@example.com');
+  const creator = (await c.query(`select ${id('user-demo-creator')} as x`)).rows[0].x;
+  await asSuperuser(c);
+  await c.query(`update public.creators set affiliate_status = 'approved', affiliate_commission_bps = 500, stripe_account_id = 'acct_creator', payouts_enabled = true where user_id = $1`, [creator]);
+  const v1 = (await c.query(`select ${id('video-v1')} as x`)).rows[0].x;
+  const o = await paidOrder(c, cust, { qty: 2, video: v1 }); // attributed 3380, commission 338
+  const owner = await ownerId(c);
+  await as(c, owner);
+  for (const s of ['accepted', 'ready', 'completed']) await c.query(`select public.restaurant_update_order_status($1, $2::public.order_status)`, [o.id, s]);
+  await asSuperuser(c);
+  const cc = (await c.query(`select id, amount_cents, status, rate_bps from public.creator_commissions`)).rows;
+  assert.deepEqual(cc.map((r) => [r.amount_cents, r.status, r.rate_bps]), [[169, 'pending', 500]]);
+
+  assert.equal((await c.query('select public.approve_due_creator_commissions(7) as n')).rows[0].n, 0, 'still in refund window');
+  await c.query(`update public.orders set completed_at = now() - interval '8 days' where id = $1`, [o.id]);
+  assert.equal((await c.query('select public.approve_due_creator_commissions(7) as n')).rows[0].n, 1);
+  const due = (await c.query('select * from public.creator_payouts_due(100)')).rows;
+  assert.equal(Number(due[0].amount_cents), 169);
+  assert.equal((await c.query(`select public.mark_commissions_paid($1, 'tr_1') as n`, [due[0].commission_ids])).rows[0].n, 1);
+  assert.equal((await c.query(`select public.mark_commissions_paid($1, 'tr_2') as n`, [due[0].commission_ids])).rows[0].n, 0, 'never paid twice');
+
+  // A second order that gets refunded: commission voided.
+  const o2 = await paidOrder(c, cust, { video: v1 });
+  await as(c, owner);
+  for (const s of ['accepted', 'ready', 'completed']) await c.query(`select public.restaurant_update_order_status($1, $2::public.order_status)`, [o2.id, s]);
+  const admin = await makeAdmin(c, 'admin-aff@example.com');
+  await as(c, admin);
+  const rid = (await c.query(`select public.admin_create_refund($1, 500, 'quality_issue', null) as id`, [o2.id])).rows[0].id;
+  await asSuperuser(c);
+  await c.query(`select public.mark_refund_result($1, 're_x', 'succeeded')`, [rid]);
+  const st = (await c.query(`select cc.status, cc.void_reason from public.creator_commissions cc join public.creator_attributions a on a.id = cc.attribution_id where a.order_id = $1`, [o2.id])).rows[0];
+  assert.deepEqual(st, { status: 'void', void_reason: 'Order refunded' });
+
+  // Creators see their own commissions; can't flip payouts_enabled themselves.
+  await as(c, creator);
+  assert.equal((await c.query('select 1 from public.creator_commissions')).rowCount, 2);
+  assert.ok((await expectDenied(c, 'update public.creators set payouts_enabled = false where user_id = $1', [creator])).error);
+}));
+
+test('collaborative similarity: built from consenting users only, ignores reversed swipes', () => tx(async (c) => {
+  const users = [];
+  for (let i = 0; i < 4; i++) users.push(await createUser(c, `cf${i}@example.com`, { consents: { personalisation: i < 3 }, policy_version: 'v' }));
+  const [v3, v8, v12] = ['video-v3', 'video-v8', 'video-v12'];
+  for (const u of users) {
+    await as(c, u);
+    await c.query(`insert into public.swipe_events (user_id, video_id, direction) values ($1, ${id(v3)}, 'right'), ($1, ${id(v8)}, 'right')`, [u]);
+  }
+  // User 0 later rejected v12 after liking it: excluded.
+  await as(c, users[0]);
+  await c.query(`insert into public.swipe_events (user_id, video_id, direction, created_at) values ($1, ${id(v12)}, 'right', now() - interval '1 hour')`, [users[0]]);
+  await c.query(`insert into public.swipe_events (user_id, video_id, direction) values ($1, ${id(v12)}, 'left')`, [users[0]]);
+  await asSuperuser(c);
+  const n = (await c.query('select public.refresh_video_similarity(90, 3, 30) as n')).rows[0].n;
+  assert.equal(n, 2, 'v3<->v8 in both directions');
+  const pair = (await c.query(`select support, score from public.video_similarity where video_id = ${id(v3)} and similar_video_id = ${id(v8)}`)).rows[0];
+  assert.equal(pair.support, 3, 'non-consenting user excluded');
+  assert.ok(pair.score > 0.99);
+  const u = await createUser(c, 'cf-noadmin@example.com');
+  await as(c, u);
+  assert.equal((await expectDenied(c, 'select public.refresh_video_similarity()')).error?.code, '42501');
+}));
+
+test('delivery updates: partner-only, forward-only, completes the order, ignores stale events', () => tx(async (c) => {
+  const cust = await createUser(c, 'deliver@example.com');
+  const o = await paidOrder(c, cust);
+  await asSuperuser(c);
+  await c.query(`insert into public.deliveries (order_id, provider, external_id, status, fee_cents, address_line1, suburb, region, postcode, lat, lng, contact_phone)
+    values ($1, 'sandbox', 'd_1', 'requested', 699, '1 Test St', 'New Farm', 'QLD', '4005', -27.467, 153.045, '0412345678')`, [o.id]);
+  await as(c, await ownerId(c));
+  await c.query(`select public.restaurant_update_order_status($1, 'accepted')`, [o.id]);
+  await c.query(`select public.restaurant_update_order_status($1, 'ready')`, [o.id]);
+  await as(c, cust);
+  assert.equal((await expectDenied(c, `select public.apply_delivery_update('sandbox', 'd_1', 'delivered', null, null, null, now())`)).error?.code, '42501');
+  assert.equal((await c.query('select address_line1 from public.deliveries')).rows[0].address_line1, '1 Test St', 'customer sees own delivery');
+  await asSuperuser(c);
+  const upd = (s, at) => c.query(`select public.apply_delivery_update('sandbox', 'd_1', $1, $2, 'Alex', null, $3::timestamptz)`, [s, s === 'courier_assigned' ? 'https://partner.example/track/d_1' : null, at]);
+  await upd('courier_assigned', '2026-11-02T10:00:00Z');
+  await upd('picked_up', '2026-11-02T10:10:00Z');
+  await upd('courier_assigned', '2026-11-02T10:05:00Z'); // stale, ignored
+  let d = (await c.query('select status, tracking_url, courier_name from public.deliveries')).rows[0];
+  assert.deepEqual(d, { status: 'picked_up', tracking_url: 'https://partner.example/track/d_1', courier_name: 'Alex' });
+  await upd('delivered', '2026-11-02T10:30:00Z');
+  assert.equal((await c.query('select status from public.orders where id = $1', [o.id])).rows[0].status, 'completed');
+  await upd('failed', '2026-11-02T10:40:00Z');
+  assert.equal((await c.query('select status from public.deliveries')).rows[0].status, 'delivered', 'terminal states are final');
+  const other = await createUser(c, 'nosy-delivery@example.com');
+  await as(c, other);
+  assert.equal((await c.query('select 1 from public.deliveries')).rowCount, 0, 'addresses private');
+}));
+
+test('delivery orders: only where the location delivers; pickup orders cannot carry a delivery fee', () => tx(async (c) => {
+  const cust = await createUser(c, 'deliv-order@example.com');
+  await asSuperuser(c);
+  const item = (await c.query(`select ${id('i-smash-fries')} as x`)).rows[0].x;
+  const q = { ...quoteJson([{ menuItemId: item, name: 'Fries', unitPriceCents: 990, quantity: 3 }]) };
+  q.deliveryFeeCents = 699; q.totalCents += 699;
+  const sql = `select status, fulfilment, delivery_fee_cents, total_cents from public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, null, $2::jsonb, gen_random_uuid(), $3::public.fulfilment_type)`;
+  assert.match((await expectDenied(c, sql, [cust, q, 'delivery'])).error?.message ?? '', /not available/, 'location does not deliver');
+  assert.match((await expectDenied(c, sql, [cust, q, 'pickup'])).error?.message ?? '', /cannot carry a delivery fee/);
+  await c.query(`update public.restaurant_locations set delivery_enabled = true, delivery_radius_km = 5 where id = ${id('l-valley-smash')}`);
+  const o = (await c.query(sql, [cust, q, 'delivery'])).rows[0];
+  assert.deepEqual(o, { status: 'pending_payment', fulfilment: 'delivery', delivery_fee_cents: 699, total_cents: 2970 + 99 + 699 });
 }));

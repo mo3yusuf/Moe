@@ -8,3 +8,5 @@ export * from './feed-types';
 export * from './recommend';
 export * from './business';
 export * from './pricing';
+export * from './geo';
+export * from './delivery';

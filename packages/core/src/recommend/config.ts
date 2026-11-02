@@ -24,6 +24,8 @@ export interface RankingConfig {
     affinity: number; favouriteCuisine: number; dislikedCuisine: number; context: number; price: number;
     trending: number; freshness: number; distancePerKm: number; freeDistanceKm: number;
     orderable: number; notOrderable: number; recentlySeen: number; alreadyCraved: number; spiceMismatch: number;
+    /** "People who craved what you craved also craved this" (item-item similarity). */
+    collaborative: number;
   };
   freshnessHalfLifeDays: number;
   exploration: { every: number; offset: number; maxAbsAffinity: number };
@@ -36,7 +38,7 @@ export interface RankingConfig {
 }
 
 export const DEFAULT_RANKING_CONFIG: RankingConfig = {
-  modelVersion: 'rules-v1',
+  modelVersion: 'rules-v2-cf',
   signals: {
     rightSwipe: 3, leftSwipe: -2, order: 5, repeatOrder: 7, save: 1.5, like: 1,
     menuItemClick: 1.5, orderClick: 2, addToBasket: 2.5, longWatch: 0.5, replay: 0.8, quickSkip: -0.3,
@@ -50,6 +52,7 @@ export const DEFAULT_RANKING_CONFIG: RankingConfig = {
     affinity: 1.2, favouriteCuisine: 0.6, dislikedCuisine: -1.2, context: 0.5, price: 0.3,
     trending: 0.5, freshness: 0.3, distancePerKm: -0.03, freeDistanceKm: 3,
     orderable: 0.4, notOrderable: -0.4, recentlySeen: -0.8, alreadyCraved: -0.25, spiceMismatch: -0.5,
+    collaborative: 0.9,
   },
   freshnessHalfLifeDays: 7,
   exploration: { every: 5, offset: 3, maxAbsAffinity: 0.25 },

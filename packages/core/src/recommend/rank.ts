@@ -22,6 +22,8 @@ export interface RankInput {
   now: Date;
   limit: number;
   timezone?: string;
+  /** Item-item collaborative scores in [0,1] for candidate videos (see collaborativeScores). */
+  collaborative?: Map<string, number>;
   /** Deterministic randomness for exploration (tests / reproducible evaluation). */
   random?: () => number;
 }
@@ -80,6 +82,15 @@ export function scoreCandidate(c: FeedCandidate, input: RankInput, cfg: RankingC
     }
     if (profile.recentlySeen.has(c.videoId)) parts.recentlySeen = w.recentlySeen;
     if (profile.craved.has(c.videoId)) parts.alreadyCraved = w.alreadyCraved;
+  }
+
+  // Collaborative signal: behavioural, so only with personalisation consent.
+  if (profile) {
+    const cf = input.collaborative?.get(c.videoId) ?? 0;
+    if (cf > 0) {
+      parts.collaborative = w.collaborative * cf;
+      if (cf >= 0.3) reasons.push([parts.collaborative, 'Loved by people with your taste']);
+    }
   }
 
   // Explicit preferences (always respected, even without behavioural personalisation).
@@ -191,4 +202,21 @@ export function seededRandom(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/**
+ * Collaborative score per candidate: the strongest similarity between the candidate and any video the
+ * user recently responded to positively (crave, like, order). Max-aggregation keeps it in [0, 1].
+ */
+export function collaborativeScores(
+  positiveVideoIds: Iterable<string>,
+  similarities: { videoId: string; similarVideoId: string; score: number }[],
+): Map<string, number> {
+  const positives = new Set(positiveVideoIds);
+  const out = new Map<string, number>();
+  for (const s of similarities) {
+    if (!positives.has(s.videoId) || positives.has(s.similarVideoId)) continue;
+    out.set(s.similarVideoId, Math.max(out.get(s.similarVideoId) ?? 0, Math.min(1, s.score)));
+  }
+  return out;
 }

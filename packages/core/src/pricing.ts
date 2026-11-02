@@ -120,7 +120,7 @@ export function serviceFee(subtotalCents: number, cfg: ServiceFeeConfig = DEFAUL
 
 export function quoteBasket(
   lines: BasketLineInput[],
-  opts: { commissionRateBps: number; serviceFee?: ServiceFeeConfig; taxRateBps?: number; currency?: string },
+  opts: { commissionRateBps: number; serviceFee?: ServiceFeeConfig; taxRateBps?: number; currency?: string; deliveryFeeCents?: number },
 ): Quote {
   if (!lines.length) throw new PricingError([{ code: 'empty', message: 'Your basket is empty' }]);
   if (lines.length > MAX_LINES) throw new PricingError([{ code: 'too_many_lines', message: `At most ${MAX_LINES} items per order` }]);
@@ -153,7 +153,10 @@ export function quoteBasket(
   if (subtotal > MAX_ORDER_CENTS) throw new PricingError([{ code: 'order_too_large', message: 'Orders over $2,000 need to be arranged with the restaurant directly' }]);
   const fee = serviceFee(subtotal, opts.serviceFee);
   const taxableFood = quoteLines.filter((l) => l.gstApplicable).reduce((a, l) => a + l.lineTotalCents, 0);
-  const gst = taxIncludedIn(taxableFood, taxRate) + taxIncludedIn(fee, taxRate);
+  const delivery = opts.deliveryFeeCents ?? 0;
+  assertCents(delivery, 'delivery fee');
+  if (delivery < 0) throw new PricingError([{ code: 'bad_delivery_fee', message: 'Invalid delivery fee' }]);
+  const gst = taxIncludedIn(taxableFood, taxRate) + taxIncludedIn(fee, taxRate) + taxIncludedIn(delivery, taxRate);
   const commission = applyBps(subtotal, opts.commissionRateBps);
 
   return {
@@ -162,9 +165,9 @@ export function quoteBasket(
     lines: quoteLines,
     subtotalCents: subtotal,
     serviceFeeCents: fee,
-    deliveryFeeCents: 0,
+    deliveryFeeCents: delivery,
     discountCents: 0,
-    totalCents: subtotal + fee,
+    totalCents: subtotal + fee + delivery,
     gstCents: gst,
     commissionRateBps: opts.commissionRateBps,
     commissionCents: commission,
