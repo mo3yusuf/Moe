@@ -35,6 +35,7 @@ function RootNavigator() {
         <Stack.Screen name="basket" options={{ headerShown: true, title: 'Your basket' }} />
         <Stack.Screen name="pay/[id]" options={{ headerShown: true, title: 'Payment', gestureEnabled: false }} />
         <Stack.Screen name="order/[id]" options={{ headerShown: true, title: 'Order' }} />
+        <Stack.Screen name="comments/[videoId]" options={{ headerShown: true, title: 'Comments', presentation: 'modal' }} />
         <Stack.Screen name="cravings" options={{ headerShown: true, title: 'Your Cravings' }} />
         <Stack.Screen name="privacy" options={{ headerShown: true, title: 'Privacy & personalisation', presentation: 'modal' }} />
       </Stack.Protected>

@@ -78,20 +78,29 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
         p_city_id: q.cityId ?? null, p_lat: q.lat ?? null, p_lng: q.lng ?? null, p_max_km: q.maxKm, p_limit: q.limit,
       });
       if (error) throw new Error(`feed_candidates: ${error.message}`);
-      return (data ?? []).map(mapCandidate);
+      const cands = (data ?? []).map(mapCandidate);
+      const itemIds = [...new Set(cands.map((c: FeedCandidate) => c.menuItemId).filter(Boolean))] as string[];
+      if (itemIds.length) {
+        const { data: al } = await admin.from('menu_items').select('id, allergens').in('id', itemIds);
+        const byId = new Map((al ?? []).map((r: any) => [r.id, r.allergens ?? []]));
+        for (const c of cands) c.itemAllergens = c.menuItemId ? byId.get(c.menuItemId) ?? [] : [];
+      }
+      return cands;
     },
 
     async viewerVideoState(userId, videoIds) {
-      if (!videoIds.length) return { liked: new Set(), saved: new Set(), craved: new Set() };
-      const [likes, saved] = await Promise.all([
+      if (!videoIds.length) return { liked: new Set(), saved: new Set(), craved: new Set(), followedCreators: new Set() };
+      const [likes, saved, follows] = await Promise.all([
         admin.from('video_likes').select('video_id').eq('user_id', userId).in('video_id', videoIds),
         admin.from('saved_meals').select('video_id, collection').eq('user_id', userId).in('video_id', videoIds),
+        admin.from('creator_follows').select('creator_id').eq('user_id', userId),
       ]);
       const savedRows = (must(saved, 'saved') ?? []) as { video_id: string; collection: string }[];
       return {
         liked: new Set((must(likes, 'likes') ?? []).map((r: any) => r.video_id)),
         saved: new Set(savedRows.filter((r) => r.collection === 'saved').map((r) => r.video_id)),
         craved: new Set(savedRows.filter((r) => r.collection === 'cravings').map((r) => r.video_id)),
+        followedCreators: new Set((follows.data ?? []).map((r: any) => r.creator_id)),
       };
     },
 
@@ -191,10 +200,10 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
     async getPreferences(userId) {
       const { data, error } = await admin.from('user_taste_preferences').select('*').eq('user_id', userId).maybeSingle();
       if (error) throw new Error(`preferences: ${error.message}`);
-      if (!data) return { ...EMPTY_PREFERENCES, preferredFulfilment: null };
+      if (!data) return { ...EMPTY_PREFERENCES, avoidAllergens: [], preferredFulfilment: null };
       return {
         favouriteCuisines: data.favourite_cuisines ?? [], dislikedCuisines: data.disliked_cuisines ?? [],
-        dietaryRequirements: (data.dietary_requirements ?? []) as DietaryTag[], spicePreference: data.spice_preference,
+        dietaryRequirements: (data.dietary_requirements ?? []) as DietaryTag[], avoidAllergens: data.avoid_allergens ?? [], spicePreference: data.spice_preference,
         typicalBudgetCents: data.typical_budget_cents, preferredFulfilment: data.preferred_fulfilment,
       };
     },
@@ -202,7 +211,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
     async setPreferences(userId, p) {
       const { error } = await admin.from('user_taste_preferences').upsert({
         user_id: userId, favourite_cuisines: p.favouriteCuisines, disliked_cuisines: p.dislikedCuisines,
-        dietary_requirements: p.dietaryRequirements, spice_preference: p.spicePreference,
+        dietary_requirements: p.dietaryRequirements, avoid_allergens: p.avoidAllergens, spice_preference: p.spicePreference,
         typical_budget_cents: p.typicalBudgetCents, preferred_fulfilment: p.preferredFulfilment,
       });
       if (error) throw new Error(`preferences: ${error.message}`);
@@ -524,6 +533,20 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
     async blockedUserIds(userId) {
       const { data } = await admin.from('user_blocks').select('blocked_id').eq('user_id', userId);
       return new Set((data ?? []).map((r) => r.blocked_id));
+    },
+
+    async followedIds(userId) {
+      const [r, c] = await Promise.all([
+        admin.from('restaurant_follows').select('restaurant_id').eq('user_id', userId),
+        admin.from('creator_follows').select('creator_id').eq('user_id', userId),
+      ]);
+      return { restaurants: new Set((r.data ?? []).map((x: any) => x.restaurant_id)), creators: new Set((c.data ?? []).map((x: any) => x.creator_id)) };
+    },
+    async setCreatorFollow(userId, creatorId, follow) {
+      const res = follow
+        ? await admin.from('creator_follows').upsert({ user_id: userId, creator_id: creatorId }, { onConflict: 'user_id,creator_id', ignoreDuplicates: true })
+        : await admin.from('creator_follows').delete().eq('user_id', userId).eq('creator_id', creatorId);
+      if (res.error) throw new Error(`follow: ${res.error.message}`);
     },
 
     async deletionRequestsReady(limit) {

@@ -184,3 +184,11 @@ Each phase lists what was actually built, how it was verified, and what is incom
 - Delivery addresses use the suburb's centre point for distance checks; the partner geocodes the street address. A proper address-autocomplete/geocoding service should be added with the partner integration.
 - Creator payouts and transfers have not been exercised against Stripe (no keys). Commission funding from CRAVE's balance, GST on commissions, and creator tax obligations (ABN/withholding) need accounting advice.
 - The collaborative model needs real data volume to be useful; with few users it has little effect by design (minimum support of 3).
+
+## Additions after Phase 8 — comments, Following feed, allergen filter
+
+Features from the parallel CRAVE build (branch `claude/crave-mobile-app-hj4lks`) that this build lacked, re-implemented here:
+- **Comments**: comment sheet on every video (count on the action rail), delete your own, report or block others; moderated comments are hidden; comment counts maintained by a trigger.
+- **Following feed**: For You / Following switch; Following shows the newest videos from restaurants and creators you follow (unpersonalised, but dietary and allergen filters still apply). Follow/unfollow creators from the feed.
+- **Avoid allergens**: a fixed allergen vocabulary based on the FSANZ declaration list, enforced by the database. Restaurants tick allergens per dish; customers choose allergens to avoid, and dishes **declared** to contain them are hidden from feeds. The app repeatedly states that an undeclared dish is not guaranteed allergen-free.
+- Tests: database 49 (+1), core 74 (+1), API 66 (+4).

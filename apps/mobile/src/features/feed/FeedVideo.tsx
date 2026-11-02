@@ -36,6 +36,8 @@ export interface FeedVideoProps {
   onToggleLike(item: FeedEntry): void;
   onToggleSave(item: FeedEntry): void;
   onShare(item: FeedEntry): void;
+  onComments(item: FeedEntry): void;
+  onFollowCreator(item: FeedEntry): void;
   onOrder(item: FeedEntry): void;
   onNext(): void;
   onPrevious(): void;
@@ -218,6 +220,7 @@ function FeedVideoBase(props: FeedVideoProps) {
           a11yLabel={item.viewer.liked ? 'Unlike' : 'Like'} active={item.viewer.liked} onPress={() => props.onToggleLike(item)} />
         <RailButton icon={item.viewer.saved ? 'bookmark' : 'bookmark-outline'} label="Save" active={item.viewer.saved}
           onPress={() => props.onToggleSave(item)} />
+        <RailButton icon="chatbubble-outline" label={String(item.stats.comments)} a11yLabel={`Comments (${item.stats.comments})`} onPress={() => props.onComments(item)} />
         <RailButton icon="arrow-redo-outline" label="Share" onPress={() => props.onShare(item)} />
         <RailButton icon="flag-outline" label="Report" onPress={() => reportVideo(item.videoId, item.creator ? { id: item.creator.id, handle: item.creator.handle } : undefined, props.onNext)} />
       </View>
@@ -232,7 +235,16 @@ function FeedVideoBase(props: FeedVideoProps) {
             ✦ {item.ranking.reasons[0]}
           </Text>
         ) : null}
-        {item.creator?.handle ? <Text style={[font.heading, styles.shadow]}>@{item.creator.handle}</Text> : null}
+        {item.creator?.handle ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+            <Text style={[font.heading, styles.shadow]}>@{item.creator.handle}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={item.viewer.followingCreator ? `Unfollow @${item.creator.handle}` : `Follow @${item.creator.handle}`}
+              onPress={() => props.onFollowCreator(item)} hitSlop={10}
+              style={{ borderWidth: 1, borderColor: colors.text, borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 2 }}>
+              <Text style={[font.label, { color: colors.text }]}>{item.viewer.followingCreator ? 'Following' : 'Follow'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {item.caption ? <Text style={[font.body, styles.shadow]} numberOfLines={2}>{item.caption}</Text> : null}
         {item.restaurant ? (
           <Text style={[font.small, styles.shadow, { color: colors.textMuted }]}>

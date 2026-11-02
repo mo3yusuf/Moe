@@ -7,9 +7,9 @@ export interface ItemDefaults {
   tags?: string[]; dietary?: string[]; allergens?: string[]; spice?: number | null; gstFree?: boolean;
 }
 
-export function ItemForm({ action, defaults = {}, cuisines, dietary, submitLabel }: {
+export function ItemForm({ action, defaults = {}, cuisines, dietary, allergens, submitLabel }: {
   action: (prev: FormState | undefined, form: FormData) => Promise<FormState>;
-  defaults?: ItemDefaults; cuisines: [string, string][]; dietary: [string, string][]; submitLabel: string;
+  defaults?: ItemDefaults; cuisines: [string, string][]; dietary: [string, string][]; allergens: [string, string][]; submitLabel: string;
 }) {
   const [state, formAction, pending] = useActionState(action, undefined);
   return (
@@ -36,7 +36,14 @@ export function ItemForm({ action, defaults = {}, cuisines, dietary, submitLabel
           </label>
         ))}</div>
       </fieldset>
-      <label>Allergens present (comma separated)<input name="allergens" defaultValue={(defaults.allergens ?? []).join(', ')} placeholder="gluten, milk, egg, peanut, sesame…" /></label>
+      <fieldset className="card" style={{ padding: 12 }}>
+        <legend className="muted">Allergens this dish contains (FSANZ declaration list) — customers who avoid these won’t see it</legend>
+        <div className="row">{allergens.map(([v, l]) => (
+          <label key={v} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, color: 'var(--text)' }}>
+            <input type="checkbox" name="allergens" value={v} defaultChecked={defaults.allergens?.includes(v)} style={{ width: 18, minHeight: 18 }} /> {l}
+          </label>
+        ))}</div>
+      </fieldset>
       <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <input type="checkbox" name="gstFree" defaultChecked={defaults.gstFree} style={{ width: 18, minHeight: 18 }} /> This item is GST-free (check with your accountant)
       </label>

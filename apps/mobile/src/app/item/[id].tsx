@@ -1,4 +1,4 @@
-import { DIETARY_LABELS, formatMoney, validateSelection, type DietaryTag, type ItemDef } from '@crave/core';
+import { ALLERGEN_LABELS, DIETARY_LABELS, formatMoney, validateSelection, type Allergen, type DietaryTag, type ItemDef } from '@crave/core';
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -71,7 +71,7 @@ export default function ItemScreen() {
           <T variant="heading">{formatMoney(item.priceCents, item.currency)}</T>
           {item.description ? <T muted>{item.description}</T> : null}
           {item.dietaryTags.length ? <T variant="small" muted>{item.dietaryTags.map((t) => DIETARY_LABELS[t as DietaryTag] ?? t).join(' · ')} (as declared by the restaurant)</T> : null}
-          {item.allergens.length ? <T variant="small" style={{ color: colors.warning }}>Contains: {item.allergens.join(', ')}. Ask the restaurant if you have an allergy.</T> : null}
+          {item.allergens.length ? <T variant="small" style={{ color: colors.warning }}>Contains: {item.allergens.map((a) => ALLERGEN_LABELS[a as Allergen] ?? a).join(', ')} (declared by the restaurant). Always confirm with the restaurant if you have an allergy.</T> : null}
         </View>
         {item.optionGroups.map((g) => (
           <Card key={g.id}>

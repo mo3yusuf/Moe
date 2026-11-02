@@ -1,5 +1,5 @@
 import {
-  buildTasteProfile, DIETARY_TAGS, emptyProfile, LAUNCH_CITY, mergeRankingConfig,
+  ALLERGENS, buildTasteProfile, DIETARY_TAGS, emptyProfile, LAUNCH_CITY, mergeRankingConfig,
 } from '@crave/core';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -11,6 +11,7 @@ const Preferences = z.object({
   favouriteCuisines: z.array(Cuisine).max(20).default([]),
   dislikedCuisines: z.array(Cuisine).max(20).default([]),
   dietaryRequirements: z.array(z.enum(DIETARY_TAGS)).max(6).default([]),
+  avoidAllergens: z.array(z.enum(ALLERGENS)).max(13).default([]),
   spicePreference: z.number().int().min(0).max(4).nullable().default(null),
   typicalBudgetCents: z.number().int().min(0).max(100_000).nullable().default(null),
   preferredFulfilment: z.enum(['pickup', 'delivery']).nullable().default(null),

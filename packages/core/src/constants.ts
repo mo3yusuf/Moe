@@ -29,3 +29,11 @@ export const CUISINES = [
   'american', 'chinese', 'desserts', 'greek', 'indian', 'italian', 'japanese', 'korean', 'lebanese', 'mexican', 'thai', 'vietnamese',
 ] as const;
 export const titleCase = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** Allergens a dish can be declared to contain (mirrors public.allowed_allergens()). */
+export const ALLERGENS = ['gluten', 'wheat', 'milk', 'egg', 'peanut', 'tree_nuts', 'sesame', 'soy', 'fish', 'crustacea', 'mollusc', 'lupin', 'sulphites'] as const;
+export type Allergen = (typeof ALLERGENS)[number];
+export const ALLERGEN_LABELS: Record<Allergen, string> = {
+  gluten: 'Gluten', wheat: 'Wheat', milk: 'Milk', egg: 'Egg', peanut: 'Peanut', tree_nuts: 'Tree nuts', sesame: 'Sesame',
+  soy: 'Soy', fish: 'Fish', crustacea: 'Crustacea (prawn, crab)', mollusc: 'Molluscs', lupin: 'Lupin', sulphites: 'Sulphites',
+};

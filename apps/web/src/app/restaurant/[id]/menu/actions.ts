@@ -1,5 +1,5 @@
 'use server';
-import { CUISINES, DIETARY_TAGS } from '@crave/core';
+import { ALLERGENS, CUISINES, DIETARY_TAGS } from '@crave/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { publicEnv } from '@/lib/env';
@@ -30,7 +30,7 @@ function readItem(form: FormData) {
       category: get('category').toLowerCase().replace(/[^a-z_ ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || null,
       tags: get('tags').toLowerCase().split(',').map((t) => t.trim().replace(/\s+/g, '_')).filter((t) => /^[a-z_]{2,30}$/.test(t)).slice(0, 12),
       dietary_tags: form.getAll('dietary').map(String).filter((d) => (DIETARY_TAGS as readonly string[]).includes(d)),
-      allergens: get('allergens').toLowerCase().split(',').map((t) => t.trim()).filter(Boolean).slice(0, 14),
+      allergens: form.getAll('allergens').map(String).filter((a) => (ALLERGENS as readonly string[]).includes(a)),
       spice_level: spice === '' ? null : Math.min(4, Math.max(0, Number(spice))),
       gst_applicable: form.get('gstFree') !== 'on',
     },

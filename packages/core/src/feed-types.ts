@@ -35,6 +35,8 @@ export interface FeedCandidate {
   itemCategory: string | null;
   itemTags: string[];
   dietaryTags: string[];
+  /** Allergens the restaurant declared for the linked dish (if loaded). */
+  itemAllergens?: string[];
   spiceLevel: number | null;
   itemAvailable: boolean;
   orderable: boolean;
@@ -62,7 +64,7 @@ export interface FeedItem {
   orderable: boolean;
   notOrderableReason: NotOrderableReason | null;
   stats: { likes: number; comments: number };
-  viewer: { liked: boolean; saved: boolean; craved: boolean };
+  viewer: { liked: boolean; saved: boolean; craved: boolean; followingCreator?: boolean };
   ranking: { score: number; reasons: string[]; exploration: boolean } | null;
 }
 

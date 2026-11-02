@@ -100,3 +100,14 @@ describe('collaborative privacy', () => {
     expect(ranked.every((r) => r.parts.collaborative === undefined)).toBe(true);
   });
 });
+
+describe('avoid allergens', () => {
+  it('hides dishes declared to contain an avoided allergen, keeps the rest', () => {
+    const a = { ...cand(1, 'thai'), itemAllergens: ['peanut', 'soy'] };
+    const b = { ...cand(2, 'thai'), itemAllergens: ['milk'] };
+    const c = cand(3, 'thai'); // nothing declared
+    const ranked = rankFeed({ candidates: [a, b, c], profile: emptyProfile(), preferences: { ...EMPTY_PREFERENCES, avoidAllergens: ['peanut'] },
+      personalised: false, now: NOW, limit: 3, random: seededRandom(1) });
+    expect(ranked.map((r) => r.candidate.videoId).sort()).toEqual(['v2', 'v3']);
+  });
+});

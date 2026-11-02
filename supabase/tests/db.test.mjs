@@ -1029,3 +1029,28 @@ test('delivery orders: only where the location delivers; pickup orders cannot ca
   const o = (await c.query(sql, [cust, q, 'delivery'])).rows[0];
   assert.deepEqual(o, { status: 'pending_payment', fulfilment: 'delivery', delivery_fee_cents: 699, total_cents: 2970 + 99 + 699 });
 }));
+
+test('comments: published videos only, counted, hideable by admins; allergen vocabulary enforced', () => tx(async (c) => {
+  const u = await createUser(c, 'commenter@example.com');
+  const other = await createUser(c, 'reader@example.com');
+  await as(c, u);
+  const cm = (await c.query(`insert into public.video_comments (video_id, user_id, body) values (${id('video-v1')}, $1, 'Best burger in the Valley') returning id`, [u])).rows[0].id;
+  assert.ok((await expectDenied(c, `insert into public.video_comments (video_id, user_id, body) values (${id('video-v1')}, $1, 'impersonation')`, [other])).error);
+  await as(c, other);
+  assert.equal((await c.query(`select body from public.video_comments where video_id = ${id('video-v1')}`)).rows[0].body, 'Best burger in the Valley');
+  assert.equal(Number((await c.query(`select comments from public.video_stats where video_id = ${id('video-v1')}`)).rows[0].comments), 1);
+  assert.equal((await c.query('delete from public.video_comments where id = $1', [cm])).rowCount, 0, 'cannot delete others’ comments');
+  const admin = await makeAdmin(c, 'admin-com@example.com');
+  await as(c, admin);
+  await c.query('update public.video_comments set is_hidden = true where id = $1', [cm]);
+  await as(c, other);
+  assert.equal((await c.query(`select 1 from public.video_comments where id = $1`, [cm])).rowCount, 0, 'hidden comments invisible');
+  assert.equal(Number((await c.query(`select comments from public.video_stats where video_id = ${id('video-v1')}`)).rows[0].comments), 0);
+
+  await asSuperuser(c);
+  assert.ok((await expectDenied(c, `update public.menu_items set allergens = '{glutin}' where id = ${id('i-smash-classic')}`)).error, 'unknown allergen rejected');
+  await c.query(`update public.menu_items set allergens = '{gluten,milk,sesame}' where id = ${id('i-smash-classic')}`);
+  await as(c, u);
+  await c.query(`insert into public.user_taste_preferences (user_id, avoid_allergens) values ($1, '{peanut,sesame}')`, [u]);
+  assert.ok((await expectDenied(c, `update public.user_taste_preferences set avoid_allergens = '{chocolate}' where user_id = $1`, [u])).error);
+}));

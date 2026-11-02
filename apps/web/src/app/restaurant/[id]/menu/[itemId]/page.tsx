@@ -1,4 +1,4 @@
-import { CUISINES, DIETARY_LABELS, DIETARY_TAGS, formatMoney, titleCase } from '@crave/core';
+import { ALLERGEN_LABELS, ALLERGENS, CUISINES, DIETARY_LABELS, DIETARY_TAGS, formatMoney, titleCase } from '@crave/core';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { loadMemberRestaurant } from '@/lib/restaurant';
@@ -20,7 +20,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
       <div className="card stack">
         <h2 style={{ margin: 0 }}>{item.name}</h2>
         <ItemForm action={updateItem.bind(null, id, itemId)} submitLabel="Save changes"
-          cuisines={CUISINES.map((c) => [c, titleCase(c)])} dietary={DIETARY_TAGS.map((d) => [d, DIETARY_LABELS[d]])}
+          cuisines={CUISINES.map((c) => [c, titleCase(c)])} dietary={DIETARY_TAGS.map((d) => [d, DIETARY_LABELS[d]])} allergens={ALLERGENS.map((a) => [a, ALLERGEN_LABELS[a]])}
           defaults={{ ...item, price: (item.price_cents / 100).toFixed(2), dietary: item.dietary_tags, spice: item.spice_level, gstFree: !item.gst_applicable }} />
       </div>
       <div className="card stack">

@@ -26,7 +26,8 @@ export default function ForYou() {
   const [screenReader, setScreenReader] = useState(false);
   const listRef = useRef<FlatList<FeedEntry>>(null);
   const router = useRouter();
-  const { items, loading, error, personalised, loadMore, refresh, patch } = useFeed();
+  const [mode, setMode] = useState<'for_you' | 'following'>('for_you');
+  const { items, loading, error, personalised, loadMore, refresh, patch } = useFeed(mode);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   useEffect(() => {
@@ -81,6 +82,18 @@ export default function ForYou() {
     track({ kind: 'action', action: saved ? 'save' : 'unsave', videoId: item.videoId, menuItemId: item.menuItem?.id ?? null });
   }, [patch]);
 
+  const onComments = useCallback((item: FeedEntry) => {
+    router.push({ pathname: '/comments/[videoId]', params: { videoId: item.videoId } });
+  }, [router]);
+
+  const onFollowCreator = useCallback(async (item: FeedEntry) => {
+    if (!item.creator || config.demoMode) return;
+    const follow = !item.viewer.followingCreator;
+    for (const i of items) if (i.creator?.id === item.creator.id) patch(i.videoId, { followingCreator: follow });
+    try { await api(`/v1/creators/${item.creator.id}/follow`, { method: 'PUT', body: { follow } }); }
+    catch { for (const i of items) if (i.creator?.id === item.creator.id) patch(i.videoId, { followingCreator: !follow }); }
+  }, [items, patch]);
+
   const onShare = useCallback(async (item: FeedEntry) => {
     const what = item.menuItem ? `${item.menuItem.name} at ${item.restaurant?.name}` : item.caption ?? 'this';
     const result = await Share.share({ message: `Craving ${what} — watch it on CRAVE: crave://video/${item.videoId}` });
@@ -122,6 +135,8 @@ export default function ForYou() {
               onToggleSave={onToggleSave}
               onShare={onShare}
               onOrder={onOrder}
+              onComments={onComments}
+              onFollowCreator={onFollowCreator}
               onNext={() => scrollTo(index + 1)}
               onPrevious={() => scrollTo(index - 1)}
             />
@@ -146,7 +161,8 @@ export default function ForYou() {
         <View style={styles.empty}>
           {loading ? <ActivityIndicator color={colors.accent} size="large" /> : (
             <View style={{ gap: space.md, alignItems: 'center', paddingHorizontal: space.xl }}>
-              <T variant="heading">{error ? 'Couldn’t load your feed' : 'No videos nearby yet'}</T>
+              <T variant="heading">{error ? 'Couldn’t load your feed' : mode === 'following' ? 'Nothing from accounts you follow yet' : 'No videos nearby yet'}</T>
+              {!error && mode === 'following' ? <T muted style={{ textAlign: 'center' }}>Follow restaurants and creators to see their latest videos here.</T> : null}
               {error ? <T muted style={{ textAlign: 'center' }}>{error}</T> : null}
               <Button title="Try again" onPress={() => void refresh()} />
             </View>
@@ -158,7 +174,11 @@ export default function ForYou() {
       <View style={[styles.header, { paddingTop: insets.top }]} pointerEvents="box-none">
         {config.demoMode ? <DemoBanner /> : null}
         <View style={styles.headerRow} pointerEvents="box-none">
-          <T variant="heading" style={styles.headerTitle} accessibilityRole="header">For You</T>
+          {(['following', 'for_you'] as const).map((m) => (
+            <Pressable key={m} accessibilityRole="tab" accessibilityState={{ selected: mode === m }} onPress={() => { setMode(m); setActiveIndex(0); }} hitSlop={8}>
+              <T variant="heading" style={[styles.headerTitle, { opacity: mode === m ? 1 : 0.55 }]}>{m === 'for_you' ? 'For You' : 'Following'}</T>
+            </Pressable>
+          ))}
           {personalised ? <T variant="label" style={styles.badge}>PERSONALISED</T> : null}
         </View>
         {needsOnboarding ? (
@@ -188,7 +208,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: { position: 'absolute', top: 0, left: 0, right: 0 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingVertical: space.sm },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.lg, paddingVertical: space.sm },
   headerTitle: { ...font.heading, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 },
   badge: { color: colors.accent },
   onboard: { marginHorizontal: space.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: space.lg, minHeight: HIT },

@@ -8,7 +8,7 @@ import { getCoarseLocation } from './location';
 export interface FeedEntry extends FeedItem { feedRequestId: string | null }
 
 /** Loads ranked feed pages from the API (or demo data), excluding videos already shown this session. */
-export function useFeed() {
+export function useFeed(mode: 'for_you' | 'following' = 'for_you') {
   const [items, setItems] = useState<FeedEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function useFeed() {
       }
       const loc = await getCoarseLocation();
       const shown = itemsRef.current.map((i) => i.videoId).slice(-150).join(',');
-      const params = new URLSearchParams({ lat: String(loc.lat), lng: String(loc.lng), limit: '10' });
+      const params = new URLSearchParams({ lat: String(loc.lat), lng: String(loc.lng), limit: '10', mode });
       if (shown) params.set('exclude', shown);
       const res = await api<FeedResponse>(`/v1/feed?${params}`);
       setPersonalised(res.personalised);
@@ -41,7 +41,7 @@ export function useFeed() {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   const itemsRef = useRef<FeedEntry[]>([]);
   itemsRef.current = items;
@@ -57,7 +57,7 @@ export function useFeed() {
     setItems((prev) => prev.map((i) => (i.videoId === videoId ? { ...i, viewer: { ...i.viewer, ...change } } : i)));
   }, []);
 
-  useEffect(() => { void loadMore(); }, [loadMore]);
+  useEffect(() => { exhausted.current = false; itemsRef.current = []; setItems([]); void loadMore(); }, [loadMore]);
 
   return { items, loading, error, personalised, loadMore, refresh, patch };
 }

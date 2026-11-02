@@ -1,4 +1,4 @@
-import { CUISINES, DIETARY_LABELS, DIETARY_TAGS, formatMoney, titleCase } from '@crave/core';
+import { ALLERGEN_LABELS, ALLERGENS, CUISINES, DIETARY_LABELS, DIETARY_TAGS, formatMoney, titleCase } from '@crave/core';
 import Link from 'next/link';
 import { canManage, loadMemberRestaurant } from '@/lib/restaurant';
 import { addItem, toggleAvailability } from './actions';
@@ -35,7 +35,7 @@ export default async function MenuPage({ params }: { params: Promise<{ id: strin
         <div className="card stack">
           <h2 style={{ margin: 0 }}>Add a menu item</h2>
           <ItemForm action={addItem.bind(null, id)} submitLabel="Add item"
-            cuisines={CUISINES.map((c) => [c, titleCase(c)])} dietary={DIETARY_TAGS.map((d) => [d, DIETARY_LABELS[d]])} />
+            cuisines={CUISINES.map((c) => [c, titleCase(c)])} dietary={DIETARY_TAGS.map((d) => [d, DIETARY_LABELS[d]])} allergens={ALLERGENS.map((a) => [a, ALLERGEN_LABELS[a]])} />
         </div>
       ) : <p className="muted">Staff can mark items sold out. Ask an owner or manager to edit the menu.</p>}
     </div>

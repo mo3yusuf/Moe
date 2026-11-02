@@ -34,12 +34,14 @@ export interface ExplicitPreferences {
   favouriteCuisines: string[];
   dislikedCuisines: string[];
   dietaryRequirements: DietaryTag[];
+  /** Allergens to hide: dishes DECLARED to contain them are filtered out. */
+  avoidAllergens?: string[];
   spicePreference: number | null;
   typicalBudgetCents: number | null;
 }
 
 export const EMPTY_PREFERENCES: ExplicitPreferences = {
-  favouriteCuisines: [], dislikedCuisines: [], dietaryRequirements: [], spicePreference: null, typicalBudgetCents: null,
+  favouriteCuisines: [], dislikedCuisines: [], dietaryRequirements: [], avoidAllergens: [], spicePreference: null, typicalBudgetCents: null,
 };
 
 export interface TasteProfile {

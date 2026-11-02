@@ -143,8 +143,11 @@ export function rankFeed(input: RankInput, cfg: RankingConfig = DEFAULT_RANKING_
   const random = input.random ?? Math.random;
   const profile = input.personalised ? input.profile : null;
 
+  const avoid = new Set(input.preferences.avoidAllergens ?? []);
   const eligible = input.candidates.filter((c) =>
-    !(profile?.rejectedVideos.has(c.videoId)) && satisfiesDietary(c, input.preferences.dietaryRequirements));
+    !(profile?.rejectedVideos.has(c.videoId)) && satisfiesDietary(c, input.preferences.dietaryRequirements)
+    // Hide dishes declared to contain an allergen the user avoids. Undeclared ≠ allergen-free: the app warns.
+    && !(c.itemAllergens ?? []).some((a) => avoid.has(a)));
 
   const scored = eligible.map((c) => scoreCandidate(c, input, cfg)).sort((a, b) => b.score - a.score);
   const remaining = new Set(scored);

@@ -32,6 +32,7 @@ export interface ViewerVideoState {
   liked: Set<string>;
   saved: Set<string>;
   craved: Set<string>;
+  followedCreators?: Set<string>;
 }
 
 export interface CravingRow {
@@ -181,6 +182,8 @@ export interface DataStore {
   paymentsForReconciliation(from: Date, to: Date): Promise<{ intentId: string; orderId: string; orderNumber: string; amountCents: number; status: string }[]>;
   // --- Trust & privacy ---
   blockedUserIds(userId: string): Promise<Set<string>>;
+  followedIds(userId: string): Promise<{ restaurants: Set<string>; creators: Set<string> }>;
+  setCreatorFollow(userId: string, creatorId: string, follow: boolean): Promise<void>;
   deletionRequestsReady(limit: number): Promise<{ requestId: string; userId: string }[]>;
   /** Deletes the auth user (cascading personal data) and their uploaded files; orders are kept anonymised. */
   deleteUserAccount(requestId: string, userId: string): Promise<void>;
@@ -203,6 +206,6 @@ export interface DataStore {
   markDeliveryRequested(deliveryId: string, externalId: string, trackingUrl: string | null): Promise<void>;
   markDeliveryFailed(deliveryId: string, reason: string): Promise<void>;
   applyDeliveryUpdate(provider: string, u: import('./delivery').DeliveryStatusUpdate): Promise<void>;
-  getPreferences(userId: string): Promise<ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }>;
-  setPreferences(userId: string, prefs: ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }): Promise<void>;
+  getPreferences(userId: string): Promise<ExplicitPreferences & { avoidAllergens: string[]; preferredFulfilment: 'pickup' | 'delivery' | null }>;
+  setPreferences(userId: string, prefs: ExplicitPreferences & { avoidAllergens: string[]; preferredFulfilment: 'pickup' | 'delivery' | null }): Promise<void>;
 }
