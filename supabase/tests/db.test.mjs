@@ -422,3 +422,43 @@ test('database order state machine matches @crave/core ORDER_TRANSITIONS exactly
   const fromCore = ORDER_STATUSES.flatMap((f) => ORDER_TRANSITIONS[f].map((t) => `${f}->${t}`)).sort();
   assert.deepEqual(fromDb, fromCore);
 });
+
+test('feed_candidates: only verified, in-area restaurants; orderability computed server-side', () => tx(async (c) => {
+  const u = await createUser(c, 'feed@example.com');
+  await as(c, u);
+  const all = await c.query(`select * from public.feed_candidates(${id('city-brisbane')}, -27.4698, 153.0251, 30, 100)`);
+  assert.equal(all.rowCount, 16, 'all published demo videos');
+  assert.ok(all.rows.every((r) => r.restaurant_name && !r.restaurant_name.includes('pending')));
+  const v1 = all.rows.find((r) => r.video_id === all.rows.find((x) => x.menu_item_name === 'Classic Double Smash').video_id);
+  assert.equal(v1.halal_certified, true);
+  assert.equal(v1.price_cents, 1690);
+  assert.ok(v1.distance_km > 0 && v1.distance_km < 5);
+  // v13 has an approved primary link (wrap) and a pending secondary link; the approved one is used.
+  const v13 = all.rows.find((r) => r.caption.startsWith('Loaded shawarma'));
+  assert.equal(v13.menu_item_name, 'Loaded Chicken Shawarma Wrap');
+
+  // Distance filter: from Sunnybank with 3 km radius only Sunnybank Dumpling House videos remain.
+  const near = await c.query(`select distinct restaurant_name from public.feed_candidates(null, -27.58, 153.06, 3, 100)`);
+  assert.deepEqual(near.rows.map((r) => r.restaurant_name), ['Sunnybank Dumpling House']);
+
+  // Unavailable item => video still shown, but not orderable.
+  await asSuperuser(c);
+  await c.query(`update public.menu_items set is_available = false where id = ${id('i-smash-classic')}`);
+  await as(c, u);
+  const after = await c.query(`select orderable, item_available from public.feed_candidates() where menu_item_id = ${id('i-smash-classic')}`);
+  assert.equal(after.rows[0].orderable, false);
+  assert.equal(after.rows[0].item_available, false);
+}));
+
+test('bump_video_stats is backend-only', () => tx(async (c) => {
+  const u = await createUser(c, 'stats@example.com');
+  await as(c, u);
+  const res = await expectDenied(c, `select public.bump_video_stats(${id('video-v1')}, 1000000)`);
+  assert.equal(res.error?.code, '42501');
+  await asSuperuser(c);
+  await c.query(`select public.bump_video_stats(${id('video-v1')}, p_impressions => 2, p_right_swipes => 1)`);
+  await c.query(`select public.bump_video_stats(${id('video-v1')}, p_right_swipes => -5)`);
+  const s = (await c.query(`select impressions, right_swipes from public.video_stats where video_id = ${id('video-v1')}`)).rows[0];
+  assert.equal(Number(s.impressions), 2);
+  assert.equal(Number(s.right_swipes), 0, 'never negative');
+}));

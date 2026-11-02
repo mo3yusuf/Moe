@@ -35,6 +35,7 @@ export default function Profile() {
         </View>
 
         <Card style={{ padding: 0 }}>
+          <ListRow title="Your Cravings" subtitle="Meals you swiped right on" onPress={() => router.push('/cravings')} />
           <ListRow title="Privacy & personalisation" subtitle="What we use, consent choices, Reset My Taste Profile" onPress={() => router.push('/privacy')} />
         </Card>
 

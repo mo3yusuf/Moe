@@ -5,11 +5,15 @@ import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import type { AuthVerifier, AuthedUser } from './lib/auth';
 import type { DataStore } from './lib/store';
+import type { Ranker } from './lib/ranker';
+import { feedRoutes } from './routes/feed';
+import { eventRoutes } from './routes/events';
 import { ApiError, notFound } from './lib/errors';
 
 export interface AppDeps {
   auth: AuthVerifier;
   store: DataStore;
+  ranker: Ranker;
   corsOrigins: string[];
   now?: () => Date;
 }
@@ -42,6 +46,9 @@ export function createApp(deps: AppDeps) {
     if (!me) throw notFound('Profile');
     return c.json(me);
   });
+
+  app.route('/v1', feedRoutes);
+  app.route('/v1', eventRoutes);
 
   app.notFound((c) => c.json({ error: { code: 'not_found', message: 'Route not found' } }, 404));
   app.onError((err, c) => {

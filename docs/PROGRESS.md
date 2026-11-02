@@ -28,3 +28,26 @@ Each phase lists what was actually built, how it was verified, and what is incom
 - Age gate is a self-declaration (16+). Legal review needed on minimum age for accounts vs. purchases.
 - Account deletion records the request and hides the profile; the worker that deletes the auth user is not built yet.
 - No rate limiting yet (planned at the API gateway / hosting layer).
+
+## Phase 2 — Vertical video feed and Smart Swipe
+
+### Built
+- **Feed retrieval** (`feed_candidates()` SQL function): one row per published video with its approved menu item, nearest location of a *verified* restaurant within the service radius, halal certification status, and server-computed orderability (item available, location open and accepting orders, pickup enabled). Unverified restaurants and out-of-area content never appear.
+- **API**: `GET /v1/feed` (location-aware, excludes videos already shown this session, returns price, orderability reason and viewer state), `POST /v1/events` (batched, validated, idempotent by client event id), `GET /v1/saved` (Cravings / saved meals).
+- **Consent-aware event ingestion**: with personalisation consent, swipes and viewing events are stored per user; without it, only anonymous aggregate counters are updated and explicit features (Cravings, likes, saves) still work. Client timestamps are clamped. Changing your mind (left after right) removes the meal from Cravings and corrects counters.
+- **Smart Swipe rules in `@crave/core`** (unit-tested): horizontal-dominance and distance/velocity thresholds so vertical scrolling and short touches never register as preferences; `WatchSession` emits one impression per video per session, watch time and completion on exit, treats quick skips as a weak signal (not a dislike), ignores pass-through revisits, counts genuine re-watches as replays, and de-duplicates repeated swipes.
+- **Mobile feed**: full-screen paged vertical feed (expo-video) that plays only the visible video, preloads the next and previous, pauses off-screen / on tab change / in background, with caching enabled; tap to pause; drag left/right with live "CRAVE IT" / "NOT FOR ME" labels, haptics and a confirmation stamp; left swipe advances to the next video; action rail (Crave it, Not for me, Like, Save, Share) placed outside the gesture area so swipes never steal taps; price, dietary labels, halal certification, distance and sponsorship disclosure; large order button showing why a meal is not orderable. Every gesture has an equivalent accessibility action and button; visible next/previous controls appear when a screen reader is on.
+- Events are batched on device (flush every 8 s, at 20 events, and on backgrounding) with bounded memory and retry limits.
+- **Your Cravings** screen listing right-swiped meals with current price and availability.
+
+### Tested
+- Core: 25 unit tests (swipe thresholds incl. diagonal/flick/reversal cases, watch session rules, event buffer batching/retry/caps, money, order state machine).
+- API: 19 tests (event planner consent rules, change of mind, cross-batch counters, timestamp clamping, batch validation and size limits, feed orderability reasons, session exclusion, auth).
+- Database: 26 tests including `feed_candidates` service-area filtering, halal flag, approved-link selection, unavailable items, and backend-only stats updates.
+- Visual check: the app was exported for web in demo mode and driven with Playwright at phone size — Crave it button, left-drag gesture (stamp + advance to next video) and layout verified by screenshot. This caught and fixed a release-animation bug that briefly showed the wrong swipe label.
+
+### Not yet verified / limitations
+- Not run on a physical iOS/Android device in this environment; video playback, haptics and native gesture feel need on-device testing. The demo clips are not food footage.
+- Ordering buttons are intentionally disabled until Phase 5.
+- Comments UI is not built yet (schema exists).
+- Streaming uses progressive MP4 from storage; HLS/adaptive bitrate needs a streaming provider before scale.

@@ -4,6 +4,7 @@ import { createApp } from './app';
 import { loadEnv } from './env';
 import { supabaseAuthVerifier } from './lib/auth';
 import { supabaseStore } from './lib/supabase-store';
+import { recencyRanker } from './lib/ranker';
 
 const env = loadEnv();
 const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -13,6 +14,7 @@ const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
 const app = createApp({
   auth: supabaseAuthVerifier(admin),
   store: supabaseStore(admin),
+  ranker: recencyRanker,
   corsOrigins: env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
 });
 
