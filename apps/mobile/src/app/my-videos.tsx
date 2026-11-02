@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert, FlatList, TextInput, View } from 'react-native';
+import { FlatList, TextInput, View } from 'react-native';
+import { Alert } from '@/lib/alert';
 import { formatMoney } from '@crave/core';
 import * as WebBrowser from 'expo-web-browser';
 import { Button, Card, Field, T } from '@/components/ui';

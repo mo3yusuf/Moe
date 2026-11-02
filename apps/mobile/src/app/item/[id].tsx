@@ -2,7 +2,8 @@ import { ALLERGEN_LABELS, DIETARY_LABELS, formatMoney, validateSelection, type A
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { Alert } from '@/lib/alert';
 import { Button, Card, Field, T } from '@/components/ui';
 import { track } from '@/features/feed/events';
 import { api, ApiRequestError } from '@/lib/api';

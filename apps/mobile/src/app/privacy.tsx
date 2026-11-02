@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { Alert } from '@/lib/alert';
 import { Button, Card, T, ToggleRow } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { PRIVACY_POLICY_VERSION, useAuth } from '@/providers/auth';

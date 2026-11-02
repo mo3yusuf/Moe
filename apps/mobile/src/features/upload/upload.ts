@@ -21,7 +21,18 @@ export interface VideoUploadInput {
 export const MAX_DURATION_MS = 180_000;
 export const MIN_DURATION_MS = 3_000;
 
+/** Everything still needed before an upload can be submitted (empty = ready). */
+export function missingForUpload(i: Pick<VideoUploadInput, 'caption' | 'durationMs' | 'isSponsored' | 'sponsorDisclosure' | 'rightsConfirmed'>): string[] {
+  const out: string[] = [];
+  if (i.caption.trim().length < 3) out.push('Write a caption — what you ate and where');
+  if (i.durationMs > 0 && (i.durationMs < MIN_DURATION_MS || i.durationMs > MAX_DURATION_MS)) out.push('Use a video between 3 seconds and 3 minutes');
+  if (i.isSponsored && i.sponsorDisclosure.trim().length < 3) out.push('Say who sponsored this video');
+  if (!i.rightsConfirmed) out.push('Tick “I own this video”');
+  return out;
+}
+
 export function validateUpload(i: VideoUploadInput): string | null {
+  if (i.caption.trim().length < 3) return 'Add a caption saying what you ate and where.';
   if (!i.rightsConfirmed) return 'Please confirm you own or have permission to share this video.';
   if (i.durationMs < MIN_DURATION_MS || i.durationMs > MAX_DURATION_MS) return 'Videos must be between 3 seconds and 3 minutes.';
   if (i.isSponsored && i.sponsorDisclosure.trim().length < 3) return 'Say who sponsored this video (e.g. “Paid partnership with …”).';

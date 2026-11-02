@@ -1,4 +1,5 @@
-import { Alert } from 'react-native';
+
+import { Alert } from '@/lib/alert';
 import { supabase } from '@/lib/supabase';
 
 const REASONS: [string, string][] = [
