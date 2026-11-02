@@ -113,7 +113,9 @@ export default function Create() {
               </Card>
               <MissingHint items={missing} />
               {error ? <T style={{ color: colors.danger }} accessibilityLiveRegion="polite">{error}</T> : null}
-              <Button title={progress != null ? 'Uploading…' : 'Upload for review'} onPress={submit} loading={progress != null} disabled={missing.length > 0} />
+              <Button title={progress != null ? (progress > 0.02 && progress < 1 ? `Uploading ${Math.round(progress * 100)}%` : 'Uploading…') : 'Upload for review'}
+                onPress={submit} disabled={missing.length > 0 || progress != null} />
+              {progress != null ? <T variant="small" muted style={{ textAlign: 'center' }}>Keep this screen open until it finishes.</T> : null}
             </>
           ) : null}
           <Card style={{ padding: 0 }}>

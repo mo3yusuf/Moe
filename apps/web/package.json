@@ -12,6 +12,7 @@
     "@crave/core": "*",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
+    "hls.js": "1.5.17",
     "next": "^16.4.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

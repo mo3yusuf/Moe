@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { memo, useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Animated, {
   Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming,
@@ -17,6 +18,7 @@ import { colors, font, HIT, radius, space } from '@/theme/tokens';
 import { reportVideo } from '@/features/moderation/report';
 import { track, watchSession } from './events';
 import type { FeedEntry } from './use-feed';
+import { setSoundOn, useSoundOn } from './sound';
 
 export type InputMethod = 'gesture' | 'button' | 'accessibility_action';
 
@@ -48,10 +50,14 @@ const STAMP_MS = 1100;
 function FeedVideoBase(props: FeedVideoProps) {
   const { item, width, height, isActive, preload, focused, bottomInset, orderingEnabled } = props;
   const shouldLoad = isActive || preload;
+  const soundOn = useSoundOn();
+  const insets = useSafeAreaInsets();
   const player = useVideoPlayer(shouldLoad ? { uri: item.playbackUrl, useCaching: true } : null, (p) => {
     p.loop = true;
+    p.muted = !soundOn; // browsers block autoplay with sound
     p.timeUpdateEventInterval = 0.5;
   });
+  useEffect(() => { player.muted = !soundOn; }, [soundOn, player]);
   const [paused, setPaused] = useState(false);
   const [stamp, setStamp] = useState<SwipeDirection | null>(null);
   const lastTime = useRef(0);
@@ -178,7 +184,7 @@ function FeedVideoBase(props: FeedVideoProps) {
           onAccessibilityAction={onA11yAction}
         >
           {shouldLoad ? (
-            <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />
+            <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} playsInline />
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
               <Text style={[font.title, { color: colors.textFaint }]}>{item.menuItem?.name ?? 'CRAVE'}</Text>
@@ -212,6 +218,13 @@ function FeedVideoBase(props: FeedVideoProps) {
       ) : null}
 
       {/* Action rail — outside the gesture detector so swipes never steal button taps. */}
+      {/* Sound toggle, top-right below the feed header (like TikTok's website). */}
+      <Pressable accessibilityRole="button" accessibilityLabel={soundOn ? 'Mute videos' : 'Turn sound on'} onPress={() => setSoundOn(!soundOn)}
+        hitSlop={10} style={[styles.sound, { top: insets.top + 56 }]}>
+        <Ionicons name={soundOn ? 'volume-high' : 'volume-mute'} size={20} color={colors.text} />
+        {!soundOn ? <Text style={[font.label, { color: colors.text }]}>Tap for sound</Text> : null}
+      </Pressable>
+
       <View style={[styles.rail, { bottom: bottomInset + 150 }]}>
         <RailButton icon={item.viewer.craved ? 'flame' : 'flame-outline'} label="Crave it" active={item.viewer.craved}
           onPress={() => commit('right', 'button')} />
@@ -310,6 +323,8 @@ const styles = StyleSheet.create({
   stampCrave: { backgroundColor: colors.accent },
   stampPass: { backgroundColor: 'rgba(29,29,32,0.92)' },
   rail: { position: 'absolute', right: space.sm, alignItems: 'center', gap: space.lg },
+  sound: { position: 'absolute', left: space.md, flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: HIT,
+    paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.45)' },
   railBtn: { minWidth: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center', gap: 2 },
   info: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.lg, paddingRight: 84, gap: space.xs },
   shadow: { color: colors.text, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },

@@ -9,6 +9,7 @@ import { rulesRanker } from './lib/ranker';
 import { stripeProvider } from './lib/payments';
 import { runBackgroundJobs } from './lib/worker';
 import { sandboxDeliveryProvider } from './lib/delivery';
+import { muxClient } from './lib/mux';
 
 const env = loadEnv();
 const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -20,7 +21,14 @@ const payments = env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRETS
   ? stripeProvider({ secretKey: env.STRIPE_SECRET_KEY, webhookSecrets: env.STRIPE_WEBHOOK_SECRETS.split(',').map((s) => s.trim()).filter(Boolean) })
   : null;
 const delivery = env.DELIVERY_PROVIDER === 'sandbox' ? sandboxDeliveryProvider(env.DELIVERY_WEBHOOK_SECRET ?? 'sandbox-dev-secret-only') : null;
+const mux = env.MUX_TOKEN_ID && env.MUX_TOKEN_SECRET && env.MUX_WEBHOOK_SECRET
+  ? muxClient({ tokenId: env.MUX_TOKEN_ID, tokenSecret: env.MUX_TOKEN_SECRET, webhookSecret: env.MUX_WEBHOOK_SECRET })
+  : null;
+if (!mux && (env.MUX_TOKEN_ID || env.MUX_TOKEN_SECRET || env.MUX_WEBHOOK_SECRET)) {
+  console.warn('[crave-api] Mux is partly configured (need MUX_TOKEN_ID, MUX_TOKEN_SECRET and MUX_WEBHOOK_SECRET) — using Supabase Storage');
+}
 const app = createApp({
+  mux,
   auth: supabaseAuthVerifier(admin),
   store,
   ranker: rulesRanker(store, { onError: (e) => console.error('[crave-api] impression logging failed', e) }),
@@ -33,7 +41,7 @@ const app = createApp({
 });
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
-  console.log(`[crave-api] listening on http://localhost:${info.port} (${env.NODE_ENV})`);
+  console.log(`[crave-api] listening on http://localhost:${info.port} (${env.NODE_ENV}, video: ${mux ? 'mux' : 'supabase storage'})`);
 });
 
 if (env.WORKER_ENABLED === 'true') {

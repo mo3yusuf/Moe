@@ -303,17 +303,19 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
 
     async listVideosForModeration(status, limit) {
       const { data, error } = await admin.from('videos')
-        .select('id, uploader_id, caption, source, is_sponsored, sponsor_disclosure, created_at, duration_ms, storage_path, video_menu_items(status, menu_items(name), restaurants(name))')
+        .select('id, uploader_id, caption, source, is_sponsored, sponsor_disclosure, created_at, duration_ms, storage_path, stream_provider, playback_url, thumbnail_url, video_menu_items(status, menu_items(name), restaurants(name))')
         .eq('status', status).order('created_at', { ascending: true }).limit(limit);
       if (error) throw new Error(`moderation list: ${error.message}`);
       const ids = (data ?? []).map((v) => v.id);
       const reports = ids.length ? await admin.from('content_reports').select('target_id').eq('target_type', 'video').eq('status', 'open').in('target_id', ids) : { data: [] };
       return Promise.all((data ?? []).map(async (v: any) => {
-        const signed = v.storage_path ? await admin.storage.from('video-uploads').createSignedUrl(v.storage_path, 3600) : null;
+        const signed = v.storage_path && v.stream_provider !== 'mux' ? await admin.storage.from('video-uploads').createSignedUrl(v.storage_path, 3600) : null;
         return {
           id: v.id, uploaderId: v.uploader_id, caption: v.caption, source: v.source, isSponsored: v.is_sponsored,
           sponsorDisclosure: v.sponsor_disclosure, createdAt: v.created_at, durationMs: v.duration_ms,
-          previewUrl: signed?.data?.signedUrl ?? null,
+          previewUrl: v.stream_provider === 'mux' ? v.playback_url : signed?.data?.signedUrl ?? null,
+          thumbnailUrl: v.thumbnail_url ?? null,
+          processing: v.stream_provider === 'mux' && !v.playback_url,
           tags: (v.video_menu_items ?? []).map((t: any) => ({ menuItemName: t.menu_items?.name ?? '', restaurantName: t.restaurants?.name ?? '', status: t.status })),
           openReports: (reports.data ?? []).filter((r: any) => r.target_id === v.id).length,
         };
@@ -321,10 +323,15 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
     },
 
     async moderateVideo(adminId, videoId, decision, notes) {
-      const { data: v } = await admin.from('videos').select('id, storage_path, status, uploader_id, caption').eq('id', videoId).maybeSingle();
+      const { data: v } = await admin.from('videos').select('id, storage_path, status, uploader_id, caption, stream_provider, playback_url').eq('id', videoId).maybeSingle();
       if (!v) return 'not_found';
       const update: Record<string, unknown> = { moderation_notes: notes };
-      if (decision === 'publish') {
+      if (decision === 'publish' && v.stream_provider === 'mux') {
+        // Streamed by Mux: nothing to copy, but encoding must have finished.
+        if (!v.playback_url) return 'processing';
+        update.status = 'published';
+        update.published_at = new Date().toISOString();
+      } else if (decision === 'publish') {
         if (!v.storage_path) return 'missing_upload';
         // Copy the private upload to the public playback bucket. A streaming provider (HLS) replaces this step later.
         // Keep the original container (.mov from iPhones, .mp4 elsewhere); both play in the app.
@@ -337,7 +344,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
         update.published_at = new Date().toISOString();
       } else {
         update.status = decision === 'reject' ? 'rejected' : 'removed';
-        if (v.status === 'published') await admin.storage.from('video-playback').remove([`${videoId}.mp4`, `${videoId}.mov`]);
+        if (v.status === 'published' && v.stream_provider !== 'mux') await admin.storage.from('video-playback').remove([`${videoId}.mp4`, `${videoId}.mov`]);
       }
       const { error } = await admin.from('videos').update(update).eq('id', videoId);
       if (error) throw new Error(`moderate: ${error.message}`);
@@ -349,6 +356,31 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
         data: { video_id: videoId, decision },
       });
       return 'ok';
+    },
+
+    async videoAwaitingUpload(userId, videoId) {
+      const { data, error } = await admin.from('videos').select('id').eq('id', videoId).eq('uploader_id', userId).eq('status', 'uploading').maybeSingle();
+      if (error) throw new Error(`video lookup: ${error.message}`);
+      return data ? { id: data.id } : null;
+    },
+
+    async markStreamUpload(videoId, provider, uploadId) {
+      const { error } = await admin.from('videos').update({ stream_provider: provider, stream_asset_id: uploadId }).eq('id', videoId);
+      if (error) throw new Error(`mark stream upload: ${error.message}`);
+    },
+
+    async attachStream(videoId, st) {
+      const update: Record<string, unknown> = { stream_asset_id: st.assetId, playback_url: st.playbackUrl, thumbnail_url: st.thumbnailUrl };
+      if (st.durationMs && st.durationMs >= 1000 && st.durationMs <= 180000) update.duration_ms = st.durationMs;
+      const { data, error } = await admin.from('videos').update(update).eq('id', videoId).select('id');
+      if (error) throw new Error(`attach stream: ${error.message}`);
+      return (data ?? []).length > 0;
+    },
+
+    async failStream(videoId, reason) {
+      const { error } = await admin.from('videos').update({ status: 'rejected', moderation_notes: `Video processing failed: ${reason}`.slice(0, 500) })
+        .eq('id', videoId).neq('status', 'published');
+      if (error) throw new Error(`fail stream: ${error.message}`);
     },
 
     async itemDefs(ids) {

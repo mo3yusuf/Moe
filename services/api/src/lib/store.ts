@@ -97,6 +97,9 @@ export interface ModerationVideo {
   id: string; uploaderId: string; caption: string | null; source: string; isSponsored: boolean; sponsorDisclosure: string | null;
   createdAt: string; durationMs: number | null; previewUrl: string | null; tags: { menuItemName: string; restaurantName: string; status: string }[];
   openReports: number;
+  thumbnailUrl?: string | null;
+  /** Streaming provider is still encoding; it can't be published yet. */
+  processing?: boolean;
 }
 
 export interface OrderableItemDef extends ItemDef {
@@ -147,7 +150,16 @@ export interface DataStore {
   isAdmin(userId: string): Promise<boolean>;
   listVideosForModeration(status: 'pending_review' | 'published' | 'rejected', limit: number): Promise<ModerationVideo[]>;
   /** Publishes (copying the upload to the public playback bucket), rejects or removes a video. Audited. */
-  moderateVideo(adminId: string, videoId: string, decision: 'publish' | 'reject' | 'remove', notes: string | null): Promise<'ok' | 'not_found' | 'missing_upload'>;
+  moderateVideo(adminId: string, videoId: string, decision: 'publish' | 'reject' | 'remove', notes: string | null): Promise<'ok' | 'not_found' | 'missing_upload' | 'processing'>;
+  // --- Streaming (Mux) ---
+  /** The uploader's own video, if it is still waiting for its file. */
+  videoAwaitingUpload(userId: string, videoId: string): Promise<{ id: string } | null>;
+  /** Records that the file is going to the streaming provider (upload id from the provider). */
+  markStreamUpload(videoId: string, provider: 'mux', uploadId: string): Promise<void>;
+  /** Provider finished encoding: playable URLs, real duration. Returns false if the video is unknown. */
+  attachStream(videoId: string, s: { assetId: string; playbackUrl: string; thumbnailUrl: string; durationMs: number | null }): Promise<boolean>;
+  /** Provider could not process the file. */
+  failStream(videoId: string, reason: string): Promise<void>;
   itemDefs(menuItemIds: string[]): Promise<Map<string, OrderableItemDef>>;
   locationStatus(locationId: string, at?: Date): Promise<LocationStatus | null>;
   serviceFeeConfig(): Promise<ServiceFeeConfig>;
