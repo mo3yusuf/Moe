@@ -76,6 +76,20 @@ test('sign-up creates a profile and customer role', () => tx(async (c) => {
   assert.equal(rows[0].role, 'customer');
 }));
 
+test('sign-up consent choices are recorded server-side; junk keys ignored', () => tx(async (c) => {
+  const uid = await createUser(c, 'consent@example.com', {
+    policy_version: 'v-test',
+    consents: { personalisation: true, marketing_email: false, sell_my_data: true, analytics: 'yes' },
+  });
+  const { rows } = await c.query(
+    'select consent_type, granted, policy_version from public.privacy_consents where user_id = $1 order by consent_type', [uid]);
+  assert.deepEqual(rows, [
+    { consent_type: 'marketing_email', granted: false, policy_version: 'v-test' },
+    { consent_type: 'personalisation', granted: true, policy_version: 'v-test' },
+  ]);
+  assert.equal((await c.query('select public.has_consent($1, $2) as ok', [uid, 'personalisation'])).rows[0].ok, true);
+}));
+
 test('unverified restaurants and their menus are hidden from customers and anon', () => tx(async (c) => {
   const uid = await createUser(c, 'cust@example.com');
   for (const who of ['anon', uid]) {
@@ -397,3 +411,14 @@ test('content reports: anyone signed in can report; only admins see all', () => 
   await as(c, b);
   assert.equal((await c.query('select 1 from public.content_reports')).rowCount, 0);
 }));
+
+test('database order state machine matches @crave/core ORDER_TRANSITIONS exactly', async () => {
+  const { ORDER_TRANSITIONS, ORDER_STATUSES } = await import('../../packages/core/src/orders.ts');
+  const { rows } = await pool.query(`
+    select f::text as "from", t::text as "to"
+    from unnest(enum_range(null::public.order_status)) f, unnest(enum_range(null::public.order_status)) t
+    where public.order_transition_allowed(f, t) order by 1, 2`);
+  const fromDb = rows.map((r) => `${r.from}->${r.to}`).sort();
+  const fromCore = ORDER_STATUSES.flatMap((f) => ORDER_TRANSITIONS[f].map((t) => `${f}->${t}`)).sort();
+  assert.deepEqual(fromDb, fromCore);
+});

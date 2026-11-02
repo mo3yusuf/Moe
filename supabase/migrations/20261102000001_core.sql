@@ -114,6 +114,14 @@ begin
   insert into public.profiles (id, display_name)
   values (new.id, coalesce(left(new.raw_user_meta_data ->> 'display_name', 60), ''));
   insert into public.user_roles (user_id, role) values (new.id, 'customer');
+  -- Consent choices made on the sign-up screen (raw_user_meta_data.consents) are recorded here,
+  -- server-side, so they are captured even if email confirmation delays the first session.
+  -- Unknown consent types are ignored; values must be JSON booleans.
+  insert into public.privacy_consents (user_id, consent_type, granted, policy_version, source)
+  select new.id, c.key, (c.value)::text::boolean, coalesce(new.raw_user_meta_data ->> 'policy_version', 'unknown'), 'onboarding'
+  from jsonb_each(coalesce(new.raw_user_meta_data -> 'consents', '{}'::jsonb)) c
+  where c.key in ('personalisation', 'precise_location', 'marketing_email', 'marketing_push', 'analytics')
+    and jsonb_typeof(c.value) = 'boolean';
   return new;
 end $$;
 
