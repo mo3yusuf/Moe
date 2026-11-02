@@ -1,5 +1,5 @@
 import { formatMoney } from '@crave/core';
-import { useStripe } from '@stripe/stripe-react-native';
+import { useStripe } from '@/lib/stripe';
 import * as Crypto from 'expo-crypto';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
