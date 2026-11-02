@@ -6,6 +6,7 @@
     "@crave/core": "*",
     "@expo/ui": "~58.0.26",
     "@expo/vector-icons": "^15.1.1",
+    "@stripe/stripe-react-native": "^0.81.0",
     "@supabase/supabase-js": "^2.118.0",
     "expo": "~58.0.22",
     "expo-constants": "~58.0.14",

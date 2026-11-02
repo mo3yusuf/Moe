@@ -11,6 +11,10 @@ import { eventRoutes } from './routes/events';
 import { tasteRoutes } from './routes/taste';
 import { adminRoutes, discoverRoutes } from './routes/discover';
 import { orderRoutes } from './routes/orders';
+import { adminPaymentRoutes, paymentRoutes } from './routes/payments';
+import { webhookRoutes } from './routes/webhooks';
+import type { PaymentProvider } from './lib/payments';
+import { clientIp, rateLimit } from './lib/rate-limit';
 import { ApiError, notFound } from './lib/errors';
 
 export interface AppDeps {
@@ -18,6 +22,11 @@ export interface AppDeps {
   store: DataStore;
   ranker: Ranker;
   paymentsMode: 'disabled' | 'simulated' | 'stripe';
+  payments?: PaymentProvider | null;
+  stripeOnBehalfOf?: boolean;
+  webBaseUrl?: string;
+  /** Set false in tests that exercise many requests. */
+  rateLimits?: boolean;
   corsOrigins: string[];
   now?: () => Date;
 }
@@ -32,6 +41,9 @@ export function createApp(deps: AppDeps) {
   app.use('*', bodyLimit({ maxSize: 256 * 1024 }));
   app.use('*', async (c, next) => { c.set('deps', deps); await next(); });
 
+  // Stripe webhooks: unauthenticated (signature-verified), mounted before the /v1 auth middleware.
+  app.route('/webhooks', webhookRoutes);
+
   app.get('/health', (c) => c.json({ ok: true, service: 'crave-api', time: (deps.now?.() ?? new Date()).toISOString() }));
 
   // Everything under /v1 requires a valid Supabase access token.
@@ -45,6 +57,14 @@ export function createApp(deps: AppDeps) {
     await next();
   });
 
+  if (deps.rateLimits !== false) {
+    const byUser = (c: any) => c.get('user')?.id ?? clientIp(c);
+    app.use('/v1/*', rateLimit({ name: 'api', capacity: 120, refillPerSecond: 2, key: byUser }));
+    app.use('/v1/events', rateLimit({ name: 'events', capacity: 30, refillPerSecond: 0.5, key: byUser }));
+    app.use('/v1/checkout', rateLimit({ name: 'checkout', capacity: 5, refillPerSecond: 1 / 30, key: byUser }));
+    app.use('/v1/basket/*', rateLimit({ name: 'basket', capacity: 30, refillPerSecond: 0.5, key: byUser }));
+  }
+
   app.get('/v1/me', async (c) => {
     const me = await deps.store.getMe(c.get('user').id);
     if (!me) throw notFound('Profile');
@@ -56,6 +76,8 @@ export function createApp(deps: AppDeps) {
   app.route('/v1', tasteRoutes);
   app.route('/v1', discoverRoutes);
   app.route('/v1', orderRoutes);
+  app.route('/v1', paymentRoutes);
+  app.route('/v1/admin', adminPaymentRoutes);
   app.route('/v1/admin', adminRoutes);
 
   app.notFound((c) => c.json({ error: { code: 'not_found', message: 'Route not found' } }, 404));

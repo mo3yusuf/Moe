@@ -11,7 +11,7 @@ export const fakeAuth: AuthVerifier = {
 };
 
 export function makeApp(store: Partial<DataStore>, extra: Partial<AppDeps> = {}) {
-  return createApp({ auth: fakeAuth, store: store as DataStore, ranker: recencyRanker, paymentsMode: 'simulated', corsOrigins: ['http://localhost:3000'], ...extra });
+  return createApp({ auth: fakeAuth, store: store as DataStore, ranker: recencyRanker, paymentsMode: 'simulated', rateLimits: false, corsOrigins: ['http://localhost:3000'], ...extra });
 }
 
 export const authed = (userId: string, init: RequestInit = {}): RequestInit => ({

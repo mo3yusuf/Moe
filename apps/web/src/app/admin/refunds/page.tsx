@@ -9,7 +9,7 @@ export default async function Refunds() {
   return (
     <div className="stack">
       <h1 style={{ margin: 0 }}>Refunds</h1>
-      <p className="notice">Approved refunds move to “pending” and are sent to the payment provider once live payments are enabled (Phase 7). No money moves yet.</p>
+      <p className="muted">Refunds for customer cancellations and restaurant rejections are sent automatically. Others need approval here; approved refunds are sent to Stripe within a minute. Test-mode (simulated) refunds complete instantly with no money moved.</p>
       <table><thead><tr><th>Order</th><th>Amount</th><th>Reason</th><th>Status</th><th>Decision</th></tr></thead><tbody>
         {(data ?? []).map((r: any) => (
           <tr key={r.id}>

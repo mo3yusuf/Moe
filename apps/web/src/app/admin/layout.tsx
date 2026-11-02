@@ -17,6 +17,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <Link href="/admin/reports">Reports & appeals</Link>
         <Link href="/admin/orders">Orders</Link>
         <Link href="/admin/refunds">Refunds</Link>
+        <Link href="/admin/payments">Payments & disputes</Link>
         <Link href="/admin/users">Customers</Link>
         <Link href="/admin/creators">Creators</Link>
         <Link href="/admin/commission">Commission & fees</Link>

@@ -141,18 +141,38 @@ orderRoutes.post('/checkout', async (c) => {
   if (!loc.acceptingOrders) throw new ApiError(422, 'not_accepting', 'The restaurant is not taking orders right now');
   if (!loc.isOpen) throw new ApiError(422, 'restaurant_closed', scheduledFor ? 'The restaurant is closed at that time' : 'The restaurant is closed right now');
 
+  // Card payments go to the restaurant's connected Stripe account; it must be fully onboarded.
+  const { payments, stripeOnBehalfOf } = c.get('deps');
+  let stripeAccount: string | null = null;
+  if (paymentsMode === 'stripe') {
+    const rp = await store.restaurantPayments(basket.restaurantId);
+    if (!payments || !rp?.stripeAccountId || !rp.payoutsEnabled) {
+      throw new ApiError(422, 'restaurant_payments_not_ready', 'This restaurant can’t take card payments yet');
+    }
+    stripeAccount = rp.stripeAccountId;
+  }
+
   const sourceVideoId = basket.items.find((i) => i.sourceVideoId)?.sourceVideoId ?? null;
   const order = await store.createPendingOrder({
     userId, restaurantId: basket.restaurantId, locationId: basket.locationId, pickupName: parsed.data.pickupName,
     note: parsed.data.note ?? null, scheduledFor: scheduledFor?.toISOString() ?? null, sourceVideoId,
     quote: priced.quote, idempotencyKey: parsed.data.idempotencyKey,
   });
+
+  if (paymentsMode === 'simulated') {
+    return c.json({ order, quote: priced.quote, payment: { mode: 'simulated', notice: 'TEST MODE — no real payment is taken.' } }, 201);
+  }
+
+  // CRAVE's application fee = commission + service fee; the restaurant receives its net via the transfer.
+  const applicationFee = priced.quote.totalCents - priced.quote.restaurantNetCents;
+  const intent = await payments!.createIntent({
+    orderId: order.id, orderNumber: order.orderNumber, amountCents: order.totalCents, applicationFeeCents: applicationFee,
+    currency: priced.quote.currency, destinationAccount: stripeAccount!, onBehalfOf: stripeOnBehalfOf ?? true,
+  });
+  await store.recordPaymentIntent(order.id, intent.id, order.totalCents, applicationFee, payments!.testMode);
   return c.json({
-    order,
-    quote: priced.quote,
-    payment: paymentsMode === 'simulated'
-      ? { mode: 'simulated', notice: 'TEST MODE — no real payment is taken. Card payments are added in Phase 7.' }
-      : { mode: 'stripe' },
+    order, quote: priced.quote,
+    payment: { mode: 'stripe', clientSecret: intent.clientSecret, testMode: payments!.testMode },
   }, 201);
 });
 

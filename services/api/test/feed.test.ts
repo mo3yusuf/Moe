@@ -8,6 +8,7 @@ describe('GET /v1/feed', () => {
   const store = {
     feedCandidates: async () => [a, b, c],
     hasConsent: async () => true,
+    blockedUserIds: async () => new Set<string>(),
     viewerVideoState: async () => ({ liked: new Set([a.videoId]), saved: new Set<string>(), craved: new Set([a.videoId]) }),
   };
 

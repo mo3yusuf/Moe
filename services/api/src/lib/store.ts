@@ -157,6 +157,28 @@ export interface DataStore {
   confirmPayment(orderId: string, provider: 'simulated' | 'stripe', providerRef: string, amountCents: number, applicationFeeCents: number, testMode: boolean): Promise<void>;
   listOrders(userId: string): Promise<OrderView[]>;
   getOrder(userId: string, orderId: string): Promise<OrderView | null>;
+  // --- Payments (Phase 7) ---
+  restaurantPayments(restaurantId: string): Promise<{ name: string; stripeAccountId: string | null; payoutsEnabled: boolean } | null>;
+  isRestaurantOwner(userId: string, restaurantId: string): Promise<boolean>;
+  setRestaurantStripeAccount(restaurantId: string, accountId: string): Promise<void>;
+  recordPaymentIntent(orderId: string, intentId: string, amountCents: number, applicationFeeCents: number, testMode: boolean): Promise<void>;
+  markPaymentFailed(intentId: string, reason: string): Promise<void>;
+  expireUnpaidOrders(minutes: number): Promise<{ orderId: string; intentId: string | null }[]>;
+  claimRefunds(limit: number): Promise<{ refundId: string; orderId: string; amountCents: number; provider: string; intentId: string | null; isTestMode: boolean; full: boolean }[]>;
+  markRefundResult(refundId: string | null, providerRefundId: string | null, status: 'pending' | 'succeeded' | 'failed', failure?: string): Promise<void>;
+  recordDispute(intentId: string, disputeId: string, amountCents: number, reason: string, status: string, evidenceDue: Date | null): Promise<void>;
+  setRestaurantStripeStatus(accountId: string, chargesEnabled: boolean, payoutsEnabled: boolean): Promise<void>;
+  upsertPayout(accountId: string, payoutId: string, amountCents: number, currency: string, status: string, arrival: string | null): Promise<void>;
+  /** Returns false if this webhook event was already processed. */
+  beginWebhook(eventId: string, type: string, payload: unknown): Promise<boolean>;
+  finishWebhook(eventId: string, error: string | null): Promise<void>;
+  paymentsForReconciliation(from: Date, to: Date): Promise<{ intentId: string; orderId: string; orderNumber: string; amountCents: number; status: string }[]>;
+  // --- Trust & privacy ---
+  blockedUserIds(userId: string): Promise<Set<string>>;
+  deletionRequestsReady(limit: number): Promise<{ requestId: string; userId: string }[]>;
+  /** Deletes the auth user (cascading personal data) and their uploaded files; orders are kept anonymised. */
+  deleteUserAccount(requestId: string, userId: string): Promise<void>;
+  runFraudRules(): Promise<number>;
   getPreferences(userId: string): Promise<ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }>;
   setPreferences(userId: string, prefs: ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }): Promise<void>;
 }

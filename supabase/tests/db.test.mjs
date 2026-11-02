@@ -812,3 +812,92 @@ test('fraud rules flag refund abuse once; creators managed by admins', () => tx(
   const cr = (await c.query('select is_verified, affiliate_status, affiliate_commission_bps from public.creators where user_id = $1', [creator])).rows[0];
   assert.deepEqual(cr, { is_verified: true, affiliate_status: 'approved', affiliate_commission_bps: 500 });
 }));
+
+test('stripe flow: intent recorded, failure then success, duplicate webhook, refund queue and results', () => tx(async (c) => {
+  const cust = await createUser(c, 'card@example.com');
+  await asSuperuser(c);
+  const q = quoteJson([{ menuItemId: (await c.query(`select ${id('i-smash-fries')} as x`)).rows[0].x, name: 'Fries', unitPriceCents: 990, quantity: 1 }]);
+  const o = (await c.query(`select * from public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, null, $2::jsonb, gen_random_uuid())`, [cust, q])).rows[0];
+  await c.query(`select public.record_payment_intent($1, 'pi_test_1', 1089, 198, true)`, [o.id]);
+  await c.query(`select public.record_payment_intent($1, 'pi_test_1', 1089, 198, true)`, [o.id]); // idempotent
+  await c.query(`select public.mark_payment_failed('pi_test_1', 'card_declined')`);
+  assert.equal((await c.query(`select status from public.orders where id = $1`, [o.id])).rows[0].status, 'pending_payment', 'retry still possible');
+  await c.query(`select public.confirm_order_payment($1, 'stripe', 'pi_test_1', 1089, 198, true)`, [o.id]);
+  await c.query(`select public.confirm_order_payment($1, 'stripe', 'pi_test_1', 1089, 198, true)`, [o.id]);
+  const pays = (await c.query(`select status, is_test_mode, failure_reason from public.payments where order_id = $1`, [o.id])).rows;
+  assert.deepEqual(pays, [{ status: 'succeeded', is_test_mode: true, failure_reason: null }]);
+
+  // Restaurant rejects -> auto-approved refund is claimed for processing exactly once.
+  await as(c, await ownerId(c));
+  await c.query(`select public.restaurant_update_order_status($1, 'rejected', 'Sold out')`, [o.id]);
+  await asSuperuser(c);
+  const claimed = (await c.query('select * from public.claim_refunds_for_processing(10)')).rows;
+  assert.equal(claimed.length, 1);
+  assert.deepEqual([claimed[0].amount_cents, claimed[0].provider, claimed[0].intent_id], [1089, 'stripe', 'pi_test_1']);
+  assert.equal((await c.query('select count(*)::int n from public.claim_refunds_for_processing(10)')).rows[0].n, 0, 'not claimed twice');
+  await c.query(`select public.mark_refund_result($1, 're_1', 'pending')`, [claimed[0].refund_id]);
+  await c.query(`select public.mark_refund_result(null, 're_1', 'succeeded')`); // webhook by provider id
+  assert.equal((await c.query(`select status from public.payments where order_id = $1`, [o.id])).rows[0].status, 'refunded');
+  assert.equal((await c.query(`select count(*)::int n from public.notifications where user_id = $1 and title = 'Refund processed'`, [cust])).rows[0].n, 1);
+
+  // Admin-created partial refunds wait in 'requested' only if not approved; admin_create_refund is pre-approved ('pending').
+  const o2 = await paidOrder(c, cust);
+  await asSuperuser(c);
+  await c.query(`insert into public.refunds (order_id, payment_id, amount_cents, reason, status) select $1, id, 100, 'quality_issue', 'requested' from public.payments where order_id = $1`, [o2.id]);
+  assert.equal((await c.query('select count(*)::int n from public.claim_refunds_for_processing(10)')).rows[0].n, 0, 'quality refunds need admin approval');
+}));
+
+test('expiry, disputes, connected accounts, payouts and deletion readiness', () => tx(async (c) => {
+  const cust = await createUser(c, 'expire@example.com');
+  await asSuperuser(c);
+  const q = quoteJson([{ menuItemId: (await c.query(`select ${id('i-smash-fries')} as x`)).rows[0].x, name: 'Fries', unitPriceCents: 990, quantity: 1 }]);
+  const o = (await c.query(`select * from public.create_pending_order($1, ${id('r-valley-smash')}, ${id('l-valley-smash')}, 'Sam', null, null, null, $2::jsonb, gen_random_uuid())`, [cust, q])).rows[0];
+  await c.query(`select public.record_payment_intent($1, 'pi_old', 1089, 198, true)`, [o.id]);
+  await c.query(`update public.orders set created_at = now() - interval '2 hours' where id = $1`, [o.id]);
+  const expired = (await c.query('select * from public.expire_unpaid_orders(30)')).rows;
+  assert.deepEqual(expired.map((r) => r.intent_id), ['pi_old']);
+  assert.equal((await c.query('select status from public.orders where id = $1', [o.id])).rows[0].status, 'cancelled');
+  assert.equal((await c.query('select count(*)::int n from public.refunds where order_id = $1', [o.id])).rows[0].n, 0, 'unpaid: nothing to refund');
+
+  const paid = await paidOrder(c, cust);
+  const admin = await makeAdmin(c, 'admin-d@example.com');
+  await asSuperuser(c);
+  const pi = (await c.query('select provider_payment_intent_id p from public.payments where order_id = $1', [paid.id])).rows[0].p;
+  await c.query(`select public.record_dispute($1, 'dp_1', 1789, 'fraudulent', 'needs_response', now() + interval '7 days')`, [pi]);
+  await c.query(`select public.record_dispute($1, 'dp_1', 1789, 'fraudulent', 'won', now() + interval '7 days')`, [pi]);
+  assert.equal((await c.query(`select status from public.payment_disputes where provider_dispute_id = 'dp_1'`)).rows[0].status, 'won');
+  assert.equal((await c.query(`select count(*)::int n from public.fraud_flags where rule = 'payment_dispute'`)).rows[0].n, 1);
+  assert.equal((await c.query(`select count(*)::int n from public.notifications where user_id = $1 and type = 'dispute'`, [admin])).rows[0].n, 1);
+
+  await c.query(`update public.restaurants set stripe_account_id = 'acct_1' where id = ${id('r-valley-smash')}`);
+  await c.query(`select public.set_restaurant_stripe_status('acct_1', true, true)`);
+  assert.equal((await c.query(`select payouts_enabled from public.restaurants where id = ${id('r-valley-smash')}`)).rows[0].payouts_enabled, true);
+  await c.query(`select public.upsert_restaurant_payout('acct_1', 'po_1', 15000, 'aud', 'in_transit', current_date + 2)`);
+  await c.query(`select public.upsert_restaurant_payout('acct_1', 'po_1', 15000, 'aud', 'paid', current_date + 2)`);
+  assert.deepEqual((await c.query(`select status, currency from public.restaurant_payouts`)).rows, [{ status: 'paid', currency: 'AUD' }]);
+  await as(c, await ownerId(c));
+  assert.equal((await c.query(`select 1 from public.restaurant_payouts`)).rowCount, 1, 'owner sees payouts');
+
+  // Deletion is deferred while an order is active.
+  await as(c, cust);
+  await c.query('select public.request_account_deletion()');
+  await asSuperuser(c);
+  assert.equal((await c.query('select count(*)::int n from public.deletion_requests_ready(10)')).rows[0].n, 0, 'active order blocks deletion');
+  await c.query(`update public.orders set status = 'cancelled' where id = $1`, [paid.id]);
+  assert.equal((await c.query('select count(*)::int n from public.deletion_requests_ready(10)')).rows[0].n, 1);
+
+  await as(c, cust);
+  for (const f of [`select public.mark_payment_failed('x', 'y')`, `select * from public.claim_refunds_for_processing(1)`, `select public.set_restaurant_stripe_status('acct_1', true, true)`]) {
+    assert.equal((await expectDenied(c, f)).error?.code, '42501', f);
+  }
+}));
+
+test('user blocks are private to the blocker', () => tx(async (c) => {
+  const a = await createUser(c, 'blocker@example.com');
+  const b = await createUser(c, 'other-blocker@example.com');
+  await as(c, a);
+  await c.query(`insert into public.user_blocks (user_id, blocked_id) values ($1, ${id('user-demo-creator')})`, [a]);
+  assert.ok((await expectDenied(c, `insert into public.user_blocks (user_id, blocked_id) values ($1, ${id('user-demo-creator')})`, [b])).error);
+  await as(c, b);
+  assert.equal((await c.query('select 1 from public.user_blocks')).rowCount, 0);
+}));

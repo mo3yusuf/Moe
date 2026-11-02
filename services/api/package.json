@@ -16,10 +16,11 @@
     "vitest": "^3.2.7"
   },
   "dependencies": {
+    "@crave/core": "*",
     "@hono/node-server": "^2.1.5",
     "@supabase/supabase-js": "^2.118.0",
     "hono": "^4.13.16",
-    "zod": "^4.6.7",
-    "@crave/core": "*"
+    "stripe": "^23.1.0",
+    "zod": "^4.6.7"
   }
 }

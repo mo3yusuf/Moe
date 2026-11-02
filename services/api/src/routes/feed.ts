@@ -22,11 +22,12 @@ feedRoutes.get('/feed', async (c) => {
   const userId = c.get('user').id;
 
   const exclude = new Set((q.exclude ?? '').split(',').filter(Boolean));
-  const [candidates, personalised] = await Promise.all([
+  const [candidates, personalised, blocked] = await Promise.all([
     store.feedCandidates({ cityId: q.cityId, lat: q.lat, lng: q.lng, maxKm: 30, limit: 400 }),
     store.hasConsent(userId, 'personalisation'),
+    store.blockedUserIds(userId),
   ]);
-  const pool = candidates.filter((cand) => !exclude.has(cand.videoId));
+  const pool = candidates.filter((cand) => !exclude.has(cand.videoId) && !blocked.has(cand.uploaderId));
   const ranked = await ranker.rank({ userId, personalised, candidates: pool, limit: q.limit, now: c.get('deps').now?.() ?? new Date() });
 
   const ids = ranked.items.map((r) => r.candidate.videoId);

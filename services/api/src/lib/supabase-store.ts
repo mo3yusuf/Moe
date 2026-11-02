@@ -30,6 +30,11 @@ function must<T>(res: { data: T; error: { message: string } | null }, what: stri
 
 /** Production DataStore backed by Supabase using the service role (server-side only). */
 export function supabaseStore(admin: SupabaseClient): DataStore {
+  const rpcOrThrow = async (fn: string, args: Record<string, unknown>) => {
+    const { data, error } = await admin.rpc(fn, args);
+    if (error) throw new Error(`${fn}: ${error.message}`);
+    return data;
+  };
   const store: DataStore = {
     async getMe(userId) {
       const profile = must(
@@ -431,6 +436,113 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       const { data, error } = await admin.from('orders').select(ORDER_SELECT).eq('id', orderId).eq('user_id', userId).maybeSingle();
       if (error) throw new Error(`order: ${error.message}`);
       return data ? toOrderView(data) : null;
+    },
+
+    async restaurantPayments(restaurantId) {
+      const { data } = await admin.from('restaurants').select('name, stripe_account_id, payouts_enabled').eq('id', restaurantId).maybeSingle();
+      return data ? { name: data.name, stripeAccountId: data.stripe_account_id, payoutsEnabled: data.payouts_enabled } : null;
+    },
+
+    async isRestaurantOwner(userId, restaurantId) {
+      const { data } = await admin.from('restaurant_members').select('role').eq('user_id', userId).eq('restaurant_id', restaurantId).maybeSingle();
+      return data?.role === 'owner';
+    },
+
+    async setRestaurantStripeAccount(restaurantId, accountId) {
+      const { error } = await admin.from('restaurants').update({ stripe_account_id: accountId }).eq('id', restaurantId).is('stripe_account_id', null);
+      if (error) throw new Error(`stripe account: ${error.message}`);
+    },
+
+    async recordPaymentIntent(orderId, intentId, amount, fee, testMode) {
+      await rpcOrThrow('record_payment_intent', { p_order_id: orderId, p_intent_id: intentId, p_amount_cents: amount, p_application_fee_cents: fee, p_test_mode: testMode });
+    },
+
+    async markPaymentFailed(intentId, reason) {
+      await rpcOrThrow('mark_payment_failed', { p_intent_id: intentId, p_reason: reason });
+    },
+
+    async expireUnpaidOrders(minutes) {
+      const data = await rpcOrThrow('expire_unpaid_orders', { p_minutes: minutes });
+      return (data ?? []).map((r: any) => ({ orderId: r.order_id, intentId: r.intent_id }));
+    },
+
+    async claimRefunds(limit) {
+      const data = await rpcOrThrow('claim_refunds_for_processing', { p_limit: limit });
+      const rows = (data ?? []) as any[];
+      if (!rows.length) return [];
+      const { data: pays } = await admin.from('orders').select('id, total_cents').in('id', rows.map((r) => r.order_id));
+      const totals = new Map((pays ?? []).map((p: any) => [p.id, p.total_cents]));
+      return rows.map((r) => ({
+        refundId: r.refund_id, orderId: r.order_id, amountCents: r.amount_cents, provider: r.provider, intentId: r.intent_id,
+        isTestMode: r.is_test_mode, full: totals.get(r.order_id) === r.amount_cents,
+      }));
+    },
+
+    async markRefundResult(refundId, providerRefundId, status, failure) {
+      await rpcOrThrow('mark_refund_result', { p_refund_id: refundId, p_provider_refund_id: providerRefundId, p_status: status, p_failure: failure ?? null });
+    },
+
+    async recordDispute(intentId, disputeId, amount, reason, status, due) {
+      await rpcOrThrow('record_dispute', { p_intent_id: intentId, p_dispute_id: disputeId, p_amount_cents: amount, p_reason: reason, p_status: status, p_evidence_due: due?.toISOString() ?? null });
+    },
+
+    async setRestaurantStripeStatus(accountId, charges, payouts) {
+      await rpcOrThrow('set_restaurant_stripe_status', { p_account_id: accountId, p_charges_enabled: charges, p_payouts_enabled: payouts });
+    },
+
+    async upsertPayout(accountId, payoutId, amount, currency, status, arrival) {
+      await rpcOrThrow('upsert_restaurant_payout', { p_account_id: accountId, p_payout_id: payoutId, p_amount_cents: amount, p_currency: currency, p_status: status, p_arrival: arrival });
+    },
+
+    async beginWebhook(eventId, type, payload) {
+      const { data: existing } = await admin.from('webhook_events').select('processed_at').eq('id', eventId).maybeSingle();
+      if (existing?.processed_at) return false;
+      if (!existing) {
+        const { error } = await admin.from('webhook_events').insert({ id: eventId, provider: 'stripe', type, payload });
+        if (error && error.code !== '23505') throw new Error(`webhook log: ${error.message}`);
+      }
+      return true;
+    },
+
+    async finishWebhook(eventId, error) {
+      await admin.from('webhook_events').update(error ? { error } : { processed_at: new Date().toISOString(), error: null }).eq('id', eventId);
+    },
+
+    async paymentsForReconciliation(from, to) {
+      const { data, error } = await admin.from('payments').select('provider_payment_intent_id, order_id, amount_cents, status, orders(order_number)')
+        .eq('provider', 'stripe').gte('created_at', from.toISOString()).lt('created_at', to.toISOString());
+      if (error) throw new Error(`reconciliation: ${error.message}`);
+      return (data ?? []).map((p: any) => ({ intentId: p.provider_payment_intent_id, orderId: p.order_id, orderNumber: p.orders?.order_number ?? '', amountCents: p.amount_cents, status: p.status }));
+    },
+
+    async blockedUserIds(userId) {
+      const { data } = await admin.from('user_blocks').select('blocked_id').eq('user_id', userId);
+      return new Set((data ?? []).map((r) => r.blocked_id));
+    },
+
+    async deletionRequestsReady(limit) {
+      const data = await rpcOrThrow('deletion_requests_ready', { p_limit: limit });
+      return (data ?? []).map((r: any) => ({ requestId: r.request_id, userId: r.user_id }));
+    },
+
+    async deleteUserAccount(requestId, userId) {
+      await admin.from('data_deletion_requests').update({ status: 'processing' }).eq('id', requestId);
+      // Remove files the user uploaded (private uploads and published copies of their videos).
+      const { data: vids } = await admin.from('videos').select('id').eq('uploader_id', userId);
+      const { data: files } = await admin.storage.from('video-uploads').list(userId, { limit: 1000 });
+      if (files?.length) await admin.storage.from('video-uploads').remove(files.map((f) => `${userId}/${f.name}`));
+      if (vids?.length) await admin.storage.from('video-playback').remove(vids.map((v) => `${v.id}.mp4`));
+      const { data: avatars } = await admin.storage.from('avatars').list(userId);
+      if (avatars?.length) await admin.storage.from('avatars').remove(avatars.map((f) => `${userId}/${f.name}`));
+      // Deleting the auth user cascades to profile, events, preferences, follows, videos, etc.
+      // Orders/payments keep user_id = null for tax record retention.
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error) throw new Error(`delete user: ${error.message}`);
+      await admin.from('data_deletion_requests').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', requestId);
+    },
+
+    async runFraudRules() {
+      return Number(await rpcOrThrow('run_fraud_rules', {}));
     },
 
     async listSaved(userId, collection) {
