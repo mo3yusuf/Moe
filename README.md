@@ -52,6 +52,12 @@ npm run dev:mobile                                # then press i / a, or scan wi
 
 **Without any backend**, the mobile app runs in a clearly labelled *demo mode* on bundled sample data (no sign-in, ordering disabled). This is for UI review only.
 
+## Payments (Stripe Connect)
+
+- Local development: `PAYMENTS_MODE=simulated` gives a clearly labelled test payment step (refused in production).
+- Stripe test mode: set `PAYMENTS_MODE=stripe`, `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_WEBHOOK_SECRETS=whsec_…` (API) and `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_…` (app), then forward webhooks with `stripe listen --forward-to localhost:8787/webhooks/stripe` (add `--forward-connect-to` for Connect events). Card payments require a development build (`npx expo run:ios|android`), not Expo Go.
+- See `docs/LAUNCH.md` for live setup and `docs/SECURITY.md` for the security review.
+
 ## Tests
 
 ```bash

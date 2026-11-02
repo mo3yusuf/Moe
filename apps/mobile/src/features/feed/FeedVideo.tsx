@@ -219,7 +219,7 @@ function FeedVideoBase(props: FeedVideoProps) {
         <RailButton icon={item.viewer.saved ? 'bookmark' : 'bookmark-outline'} label="Save" active={item.viewer.saved}
           onPress={() => props.onToggleSave(item)} />
         <RailButton icon="arrow-redo-outline" label="Share" onPress={() => props.onShare(item)} />
-        <RailButton icon="flag-outline" label="Report" onPress={() => reportVideo(item.videoId)} />
+        <RailButton icon="flag-outline" label="Report" onPress={() => reportVideo(item.videoId, item.creator ? { id: item.creator.id, handle: item.creator.handle } : undefined, props.onNext)} />
       </View>
 
       {/* Meal info and ordering. */}

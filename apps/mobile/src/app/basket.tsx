@@ -1,10 +1,12 @@
 import { formatMoney } from '@crave/core';
+import { useStripe } from '@stripe/stripe-react-native';
 import * as Crypto from 'expo-crypto';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, View } from 'react-native';
 import { Button, Card, Field, T } from '@/components/ui';
 import { api } from '@/lib/api';
+import { config } from '@/lib/config';
 import { useAuth } from '@/providers/auth';
 import { colors, space } from '@/theme/tokens';
 
@@ -23,6 +25,7 @@ export default function BasketScreen() {
   const [pickupName, setPickupName] = useState(String(session?.user.user_metadata?.display_name ?? '').split(' ')[0] ?? '');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   // One idempotency key per checkout attempt: double taps / retries can never create two orders.
   const idempotencyKey = useRef(Crypto.randomUUID());
 
@@ -38,12 +41,32 @@ export default function BasketScreen() {
   async function checkout() {
     setBusy(true);
     try {
-      const res = await api<{ order: { id: string; totalCents: number }; payment: { mode: string } }>('/v1/checkout', {
+      const res = await api<{ order: { id: string; totalCents: number }; payment: { mode: string; clientSecret?: string; testMode?: boolean } }>('/v1/checkout', {
         body: { pickupName, note: note || null, idempotencyKey: idempotencyKey.current },
       });
       idempotencyKey.current = Crypto.randomUUID();
       if (res.payment.mode === 'simulated') router.replace({ pathname: '/pay/[id]', params: { id: res.order.id, total: String(res.order.totalCents) } });
-      else Alert.alert('Payments', 'Card payments are not enabled yet.');
+      else if (res.payment.mode === 'stripe' && res.payment.clientSecret) {
+        if (!config.stripePublishableKey) throw new Error('Card payments are not configured in this build.');
+        // Stripe PaymentSheet: card details go directly to Stripe and never touch CRAVE's servers.
+        const init = await initPaymentSheet({
+          paymentIntentClientSecret: res.payment.clientSecret,
+          merchantDisplayName: 'CRAVE',
+          returnURL: 'crave://stripe-redirect',
+          applePay: { merchantCountryCode: 'AU' },
+          googlePay: { merchantCountryCode: 'AU', testEnv: !!res.payment.testMode },
+          defaultBillingDetails: { address: { country: 'AU' } },
+        });
+        if (init.error) throw new Error(init.error.message);
+        const paid = await presentPaymentSheet();
+        if (paid.error) {
+          // Cancelled or declined: the order stays unpaid (it expires after 30 minutes) and nothing is sent to the restaurant.
+          if (paid.error.code !== 'Canceled') Alert.alert('Payment didn’t go through', paid.error.message);
+          return;
+        }
+        // The order is released to the restaurant only when Stripe's webhook confirms payment.
+        router.replace(`/order/${res.order.id}`);
+      }
     } catch (e) {
       Alert.alert('Couldn’t place order', e instanceof Error ? e.message : 'Please try again');
       load();

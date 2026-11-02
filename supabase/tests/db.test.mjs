@@ -901,3 +901,26 @@ test('user blocks are private to the blocker', () => tx(async (c) => {
   await as(c, b);
   assert.equal((await c.query('select 1 from public.user_blocks')).rowCount, 0);
 }));
+
+test('security: users cannot read other users’ consent; every SECURITY DEFINER RPC guards itself', () => tx(async (c) => {
+  const a = await createUser(c, 'consent-a@example.com', { consents: { marketing_email: true }, policy_version: 'v' });
+  const b = await createUser(c, 'consent-b@example.com');
+  await as(c, a);
+  assert.equal((await c.query('select public.has_consent($1, $2) as ok', [a, 'marketing_email'])).rows[0].ok, true);
+  await as(c, b);
+  assert.equal((await expectDenied(c, 'select public.has_consent($1, $2)', [a, 'marketing_email'])).error?.code, '42501');
+  await as(c, 'anon');
+  assert.ok((await expectDenied(c, 'select public.has_consent($1, $2)', [a, 'marketing_email'])).error);
+
+  // Static check: any SECURITY DEFINER function that is not a trigger must reference an authorisation guard
+  // (or be on the reviewed allow-list of read-only helpers).
+  await asSuperuser(c);
+  const { rows } = await c.query(`
+    select p.proname, pg_get_functiondef(p.oid) as def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype`);
+  const allow = new Set(['is_admin', 'location_is_open', 'menu_item_orderable', 'restaurant_visible', 'can_manage_restaurant']);
+  const unguarded = rows.filter((r) => !allow.has(r.proname)
+    && !/(is_admin\(\)|request_is_privileged\(\)|auth\.uid\(\)|is_restaurant_member|can_manage_restaurant)/.test(r.def)).map((r) => r.proname);
+  assert.deepEqual(unguarded, []);
+}));

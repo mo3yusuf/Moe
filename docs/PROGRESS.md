@@ -143,3 +143,24 @@ Each phase lists what was actually built, how it was verified, and what is incom
 - Dashboards refresh on load (orders queue auto-refreshes); no realtime charts. Figures include simulated test payments until Phase 7, and card-processing fees/payouts are not yet shown.
 - Fraud rules need scheduling (pg_cron or a worker) and tuning with real data.
 - Admin access to customer data relies on role checks and the audit log; a formal access policy, staff training and least-privilege admin sub-roles (support vs. finance vs. moderation) should be added before scale.
+
+## Phase 7 — Payments, security hardening, testing and pilot preparation
+
+### Built
+- **Stripe Connect (destination charges)**: restaurants onboard to Stripe Express from the dashboard (owner only; Stripe collects identity and bank details — CRAVE never sees them). At checkout the API creates a PaymentIntent for the exact server-computed total, with CRAVE's application fee = commission + service fee and the remainder transferred to the restaurant (optionally with the restaurant as settlement merchant, `STRIPE_ON_BEHALF_OF`). Restaurants that haven't finished Stripe onboarding can't take card orders.
+- **Mobile PaymentSheet**: cards, Apple Pay and Google Pay; card data goes straight to Stripe. Cancelled/declined payments leave the order unpaid; it's never sent to the restaurant.
+- **Webhooks** (`POST /webhooks/stripe`): signature-verified against the raw body (platform + Connect secrets), processed at most once, retried by Stripe on failure. Handles payment success (the only way an order is released), payment failure, refunds, disputes (creates a high-severity fraud flag and notifies admins), connected-account status and restaurant payouts.
+- **Background worker** (every minute, idempotent): cancels orders unpaid after 30 minutes (and their intents), executes refunds (automatic for customer cancellations and restaurant rejections; admin-approved for others) with reverse transfers and idempotency keys, completes account deletions once no orders are active (deletes uploads and the auth user; keeps anonymised financial records), runs fraud rules hourly.
+- **Dashboards**: restaurant **Payouts** page (connect/continue Stripe setup, Stripe Express dashboard link, payout history); admin **Payments & disputes** (daily reconciliation of Stripe vs. CRAVE records for a Brisbane day, disputes with evidence due dates, failed webhook deliveries).
+- **Security hardening**: per-user rate limits; fail-fast configuration (Stripe mode requires keys; simulated mode refused in production); a security review (`docs/SECURITY.md`) with a static database test that fails if any privileged function lacks an authorisation check — it caught and we fixed a consent-status information leak and an unguarded stats function; users can **block** creators (hidden from their feed), required for App Store UGC review.
+- **Pilot preparation**: EAS build profiles, iOS privacy manifest, Stripe/Apple Pay/Google Pay app config, a GitHub Actions CI workflow (typecheck, unit, API and database tests, web build, mobile bundle), and `docs/LAUNCH.md` (accounts, legal/accounting items, store review checklist, operations).
+
+### Tested
+- API (53, +12): webhook signature verification using Stripe's signing algorithm (valid, tampered, forged), at-most-once processing, retry on failure, event mapping for failures/refunds/disputes/accounts/connected payouts; checkout refuses restaurants not onboarded and computes the application fee correctly; worker expiry/refund/deletion paths including refund failures; reconciliation discrepancy detection; owner-only, create-once Connect onboarding; rate limiting with Retry-After; blocked creators hidden; config validation.
+- Database (44, +4): payment intent → failure → success → duplicate webhook; refund lease (no double claim) and provider results; quality refunds need approval; unpaid-order expiry; disputes; connected account status; payouts visible to owners; deletion deferred while orders are active; backend-only functions; blocks private; consent leak regression + static guard check.
+- Core 66, web build, mobile Android bundle, `npm audit` (0 high/critical).
+
+### Not yet verified
+- **No live Stripe calls have been made** — no Stripe keys were available. Payment, refund and Connect calls follow Stripe's current SDK (v23) types, and webhook verification uses Stripe's real algorithm, but the end-to-end flow must be run in Stripe **test mode** (and with the Stripe CLI forwarding webhooks) before any live payment.
+- Still not run against a live Supabase project or on a physical device.
+- Who is the seller of record, GST on fees, and refund cost allocation (`refund_application_fee`/`reverse_transfer` choices) need accounting/legal confirmation.

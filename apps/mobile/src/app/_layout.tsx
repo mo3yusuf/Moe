@@ -4,6 +4,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StripeProvider } from '@stripe/stripe-react-native';
+import { config } from '@/lib/config';
 import { AuthProvider, useAuth } from '@/providers/auth';
 import { colors } from '@/theme/tokens';
 
@@ -48,10 +50,12 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>
         <ThemeProvider value={navTheme}>
-          <AuthProvider>
-            <StatusBar style="light" />
-            <RootNavigator />
-          </AuthProvider>
+          <StripeProvider publishableKey={config.stripePublishableKey} merchantIdentifier="merchant.app.crave.mobile" urlScheme="crave">
+            <AuthProvider>
+              <StatusBar style="light" />
+              <RootNavigator />
+            </AuthProvider>
+          </StripeProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

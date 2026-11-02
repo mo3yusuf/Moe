@@ -50,6 +50,7 @@ export default function OrderScreen() {
       <Stack.Screen options={{ headerShown: true, title: order.orderNumber }} />
       <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={{ padding: space.lg, gap: space.lg }}>
         {order.payment?.isTestMode ? <T variant="label" style={{ color: colors.warning }}>TEST ORDER — NO REAL PAYMENT WAS TAKEN</T> : null}
+        {order.status === 'pending_payment' ? <T muted>Confirming your payment with the bank…</T> : null}
         <View style={{ gap: space.xs }} accessibilityLiveRegion="polite">
           <T variant="title">{ORDER_STATUS_LABELS[order.status]}</T>
           <T muted>{order.restaurantName}{order.pickupAddress ? ` · ${order.pickupAddress}` : ''}</T>

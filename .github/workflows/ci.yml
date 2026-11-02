@@ -1,0 +1,33 @@
+name: CI
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install PostgreSQL 16 (for database tests)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-16
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:db
+      - name: Build web dashboard
+        run: npm run build -w @crave/web
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Bundle mobile app (Android)
+        working-directory: apps/mobile
+        run: npx expo export --platform android --output-dir /tmp/expo-export
+        env:
+          EXPO_OFFLINE: '1'
+          CI: '1'
