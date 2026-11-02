@@ -130,7 +130,13 @@
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "CRAVE",
+      "shortName": "CRAVE",
+      "themeColor": "#0A0A0B",
+      "backgroundColor": "#0A0A0B",
+      "description": "Short food videos from Brisbane. Swipe what you crave.",
+      "lang": "en-AU"
     },
     "plugins": [
       "expo-router",

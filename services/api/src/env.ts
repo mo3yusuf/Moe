@@ -8,6 +8,9 @@ const EnvSchema = z.object({
   // Server-only secret. Never ship to clients, never log.
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
   CORS_ORIGINS: z.string().default('http://localhost:3000,http://localhost:8081'),
+  /** Bare host names of the hosted web app and dashboard (e.g. from Render); allowed as https:// origins. */
+  APP_HOST: z.string().optional(),
+  DASHBOARD_HOST: z.string().optional(),
   /** simulated = development-only fake payment step; stripe = Phase 7; disabled = checkout off. */
   PAYMENTS_MODE: z.enum(['disabled', 'simulated', 'stripe']).default('disabled'),
   STRIPE_SECRET_KEY: z.string().regex(/^(sk|rk)_(test|live)_/).optional(),
@@ -15,7 +18,7 @@ const EnvSchema = z.object({
   STRIPE_WEBHOOK_SECRETS: z.string().optional(),
   /** true = restaurant is the settlement merchant (on_behalf_of). Confirm with legal/accounting. */
   STRIPE_ON_BEHALF_OF: z.enum(['true', 'false']).default('true'),
-  WEB_BASE_URL: z.url().default('http://localhost:3000'),
+  WEB_BASE_URL: z.string().default('http://localhost:3000'),
   /** none = pickup only (default). sandbox = TEST/DEV ONLY fake partner, refused in production. */
   DELIVERY_PROVIDER: z.enum(['none', 'sandbox']).default('none'),
   DELIVERY_WEBHOOK_SECRET: z.string().min(16).optional(),

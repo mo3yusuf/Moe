@@ -129,7 +129,7 @@ export default function ForYou() {
               preload={index > activeIndex && index <= activeIndex + PRELOAD_AHEAD || index === activeIndex - 1}
               focused={focused}
               bottomInset={space.md}
-              orderingEnabled={!config.demoMode}
+              orderingEnabled={!config.demoMode && config.orderingEnabled}
               onSwipe={onSwipe}
               onToggleLike={onToggleLike}
               onToggleSave={onToggleSave}
@@ -161,7 +161,8 @@ export default function ForYou() {
         <View style={styles.empty}>
           {loading ? <ActivityIndicator color={colors.accent} size="large" /> : (
             <View style={{ gap: space.md, alignItems: 'center', paddingHorizontal: space.xl }}>
-              <T variant="heading">{error ? 'Couldn’t load your feed' : mode === 'following' ? 'Nothing from accounts you follow yet' : 'No videos nearby yet'}</T>
+              <T variant="heading">{error ? 'Couldn’t load your feed' : mode === 'following' ? 'Nothing from accounts you follow yet' : 'No videos yet — be the first!'}</T>
+              {!error && mode === 'for_you' && !config.demoMode ? <Button title="Post a food video" onPress={() => router.push('/create')} /> : null}
               {!error && mode === 'following' ? <T muted style={{ textAlign: 'center' }}>Follow restaurants and creators to see their latest videos here.</T> : null}
               {error ? <T muted style={{ textAlign: 'center' }}>{error}</T> : null}
               <Button title="Try again" onPress={() => void refresh()} />

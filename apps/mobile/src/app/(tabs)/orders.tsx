@@ -15,11 +15,15 @@ export default function Orders() {
   const [basketCount, setBasketCount] = useState(0);
 
   useFocusEffect(useCallback(() => {
-    if (config.demoMode) return;
+    if (config.demoMode || !config.orderingEnabled) return;
     api<{ items: O[] }>('/v1/orders').then((r) => setOrders(r.items)).catch(() => setOrders([]));
     api<{ basket: { lines: { quantity: number }[] } | null }>('/v1/basket').then((b) => setBasketCount(b.basket?.lines.reduce((a, l) => a + l.quantity, 0) ?? 0)).catch(() => {});
   }, []));
 
+  if (!config.demoMode && !config.orderingEnabled) {
+    return <Screen><View style={{ flex: 1, justifyContent: 'center', gap: space.sm }}><T variant="title">Orders</T>
+      <T muted>Ordering through CRAVE is coming soon. For now, save the meals you crave — they’re in Profile → Your Cravings.</T></View></Screen>;
+  }
   if (config.demoMode) return <Screen padded={false}><DemoBanner /><View style={{ padding: space.lg, gap: space.sm }}><T variant="title">Orders</T><T muted>Ordering is disabled in demo mode.</T></View></Screen>;
 
   return (

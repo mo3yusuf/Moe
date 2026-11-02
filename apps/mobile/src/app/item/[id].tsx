@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-nat
 import { Button, Card, Field, T } from '@/components/ui';
 import { track } from '@/features/feed/events';
 import { api, ApiRequestError } from '@/lib/api';
+import { config } from '@/lib/config';
 import { colors, HIT, radius, space } from '@/theme/tokens';
 
 interface Detail extends ItemDef {
@@ -98,8 +99,10 @@ export default function ItemScreen() {
         </View>
       </ScrollView>
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: space.lg, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border, gap: space.xs }}>
-        {!item.orderable ? <T variant="small" style={{ color: colors.warning, textAlign: 'center' }}>This restaurant isn’t taking orders right now.</T> : errors[0] ? <T variant="small" muted style={{ textAlign: 'center' }}>{errors[0].message}</T> : null}
-        <Button title={`Add ${qty} to basket · ${formatMoney(unit * qty, item.currency)}`} onPress={() => add()} loading={busy} disabled={!!errors.length || !item.orderable} />
+        {!config.orderingEnabled ? <T variant="small" muted style={{ textAlign: 'center' }}>Ordering through CRAVE is coming soon.</T>
+          : !item.orderable ? <T variant="small" style={{ color: colors.warning, textAlign: 'center' }}>This restaurant isn’t taking orders right now.</T> : errors[0] ? <T variant="small" muted style={{ textAlign: 'center' }}>{errors[0].message}</T> : null}
+        <Button title={config.orderingEnabled ? `Add ${qty} to basket · ${formatMoney(unit * qty, item.currency)}` : 'Ordering coming soon'} onPress={() => add()} loading={busy}
+          disabled={!config.orderingEnabled || !!errors.length || !item.orderable} />
       </View>
     </>
   );
