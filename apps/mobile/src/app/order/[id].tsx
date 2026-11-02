@@ -1,7 +1,7 @@
 import { formatMoney, ORDER_STATUS_LABELS, isTerminal, type OrderStatus } from '@crave/core';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking, ScrollView, View } from 'react-native';
 import { Button, Card, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
@@ -14,6 +14,8 @@ interface Order {
   events: { status: OrderStatus; at: string; note: string | null }[];
   refunds: { amountCents: number; status: string }[];
   payment: { provider: string; isTestMode: boolean } | null;
+  fulfilment: 'pickup' | 'delivery'; deliveryFeeCents: number;
+  delivery: { status: string; trackingUrl: string | null; courierName: string | null; estimatedDropoffAt: string | null; suburb: string } | null;
 }
 const STEPS: OrderStatus[] = ['placed', 'accepted', 'preparing', 'ready', 'completed'];
 const time = (iso: string) => new Date(iso).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
@@ -55,7 +57,16 @@ export default function OrderScreen() {
           <T variant="title">{ORDER_STATUS_LABELS[order.status]}</T>
           <T muted>{order.restaurantName}{order.pickupAddress ? ` · ${order.pickupAddress}` : ''}</T>
           {order.estimatedReadyAt && !isTerminal(order.status) ? <T>Estimated ready around {time(order.estimatedReadyAt)}</T> : null}
-          {order.status === 'ready' ? <T style={{ color: colors.success }}>Head to the counter and give the name “{order.pickupName}”.</T> : null}
+          {order.status === 'ready' && order.fulfilment === 'pickup' ? <T style={{ color: colors.success }}>Head to the counter and give the name “{order.pickupName}”.</T> : null}
+          {order.delivery ? (
+            <Card>
+              <T variant="heading">Delivery to {order.delivery.suburb}</T>
+              <T muted>{({ quoted: 'Waiting for the restaurant to accept', requested: 'Finding a courier', courier_assigned: `Courier assigned${order.delivery.courierName ? `: ${order.delivery.courierName}` : ''}`,
+                picked_up: 'On its way', delivered: 'Delivered', cancelled: 'Delivery cancelled', failed: 'Delivery problem — support has been alerted' } as Record<string, string>)[order.delivery.status] ?? order.delivery.status}</T>
+              {order.delivery.estimatedDropoffAt ? <T muted>Estimated arrival {time(order.delivery.estimatedDropoffAt)}</T> : null}
+              {order.delivery.trackingUrl ? <Button title="Track with the delivery partner" variant="secondary" onPress={() => Linking.openURL(order.delivery!.trackingUrl!)} /> : null}
+            </Card>
+          ) : null}
           {stopped && order.cancelReason ? <T muted>Reason: {order.cancelReason}</T> : null}
         </View>
         {!stopped ? (
@@ -79,6 +90,7 @@ export default function OrderScreen() {
             </View>
           ))}
           <T muted>Service fee {formatMoney(order.serviceFeeCents)}</T>
+          {order.deliveryFeeCents ? <T muted>Delivery fee {formatMoney(order.deliveryFeeCents)}</T> : null}
           <T variant="heading">Total {formatMoney(order.totalCents)} <T variant="small" muted>incl. GST {formatMoney(order.gstCents)}</T></T>
         </Card>
         {order.refunds.map((r, i) => <T key={i} muted>Refund of {formatMoney(r.amountCents)}: {r.status}</T>)}

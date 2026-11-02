@@ -14,6 +14,8 @@ import { orderRoutes } from './routes/orders';
 import { adminPaymentRoutes, paymentRoutes } from './routes/payments';
 import { webhookRoutes } from './routes/webhooks';
 import type { PaymentProvider } from './lib/payments';
+import type { DeliveryProvider } from './lib/delivery';
+import { creatorRoutes } from './routes/creators';
 import { clientIp, rateLimit } from './lib/rate-limit';
 import { ApiError, notFound } from './lib/errors';
 
@@ -23,6 +25,8 @@ export interface AppDeps {
   ranker: Ranker;
   paymentsMode: 'disabled' | 'simulated' | 'stripe';
   payments?: PaymentProvider | null;
+  /** Delivery partner adapter; null = pickup only. */
+  delivery?: DeliveryProvider | null;
   stripeOnBehalfOf?: boolean;
   webBaseUrl?: string;
   /** Set false in tests that exercise many requests. */
@@ -77,6 +81,7 @@ export function createApp(deps: AppDeps) {
   app.route('/v1', discoverRoutes);
   app.route('/v1', orderRoutes);
   app.route('/v1', paymentRoutes);
+  app.route('/v1', creatorRoutes);
   app.route('/v1/admin', adminPaymentRoutes);
   app.route('/v1/admin', adminRoutes);
 

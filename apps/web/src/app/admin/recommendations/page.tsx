@@ -1,4 +1,5 @@
 import { supabaseServer } from '@/lib/supabase/server';
+import { refreshSimilarity } from '../actions';
 
 const pct = (n: number | string | null) => `${(Number(n ?? 0) * 100).toFixed(1)}%`;
 
@@ -25,6 +26,11 @@ export default async function Recommendations({ searchParams }: { searchParams: 
           ))}
         </tbody></table>
       )}
+      <div className="card stack">
+        <h2 style={{ margin: 0 }}>“Similar videos” (collaborative filtering)</h2>
+        <p className="muted" style={{ margin: 0 }}>Rebuilt nightly from consenting users’ craves, likes and orders (min. 3 shared users per pair). Evaluate weight changes offline first with <code>holdoutEvaluate</code> in <code>@crave/core</code>.</p>
+        <form action={refreshSimilarity}><button className="btn secondary">Rebuild now</button></form>
+      </div>
       <div className="card stack">
         <h2 style={{ margin: 0 }}>Weight overrides</h2>
         <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{JSON.stringify(weights?.value ?? {}, null, 2)}</pre>

@@ -67,7 +67,9 @@ export async function handleStripeEvent(store: DataStore, event: Stripe.Event): 
     }
     case 'account.updated': {
       const a = event.data.object;
+      // The same account.updated event covers restaurants and creators (each update is a no-op for the other).
       await store.setRestaurantStripeStatus(a.id, !!a.charges_enabled, !!a.payouts_enabled);
+      await store.setCreatorStripeStatus(a.id, !!a.payouts_enabled);
       return;
     }
     case 'payout.created':
@@ -83,3 +85,18 @@ export async function handleStripeEvent(store: DataStore, event: Stripe.Event): 
       return; // ignore other event types
   }
 }
+
+/** Delivery partner webhooks: signature verified by the provider adapter; partner data is the only source of courier status. */
+webhookRoutes.post('/delivery/:provider', async (c) => {
+  const { delivery, store } = c.get('deps');
+  if (!delivery || delivery.name !== c.req.param('provider')) return c.json({ error: 'unknown provider' }, 404);
+  const raw = await c.req.text();
+  let update;
+  try {
+    update = delivery.parseWebhook(raw, Object.fromEntries([...c.req.raw.headers.entries()]));
+  } catch {
+    return c.json({ error: 'invalid signature' }, 400);
+  }
+  await store.applyDeliveryUpdate(delivery.name, update);
+  return c.json({ received: true });
+});

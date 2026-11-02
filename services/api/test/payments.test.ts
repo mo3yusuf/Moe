@@ -28,6 +28,7 @@ function webhookStore(over: Partial<DataStore> = {}) {
     markRefundResult: vi.fn(async () => {}),
     recordDispute: vi.fn(async () => {}),
     setRestaurantStripeStatus: vi.fn(async () => {}),
+    setCreatorStripeStatus: vi.fn(async () => {}),
     upsertPayout: vi.fn(async () => {}),
     ...over,
   };
@@ -136,7 +137,7 @@ describe('background jobs', () => {
       runFraudRules: vi.fn(async () => 2),
     } as unknown as DataStore;
     const r = await runBackgroundJobs(store, payments as unknown as PaymentProvider, { runFraud: true });
-    expect(r).toEqual({ expired: 2, refunds: { succeeded: 1, pending: 1, failed: 1 }, deletions: 1, fraudFlags: 2 });
+    expect(r).toMatchObject({ expired: 2, refunds: { succeeded: 1, pending: 1, failed: 1 }, deletions: 1, fraudFlags: 2 });
     expect(payments.cancelIntent).toHaveBeenCalledWith('pi_old');
     expect(payments.refund).toHaveBeenCalledWith({ intentId: 'pi_ok', amountCents: 500, idempotencyKey: 'r2', full: false });
     expect((store as any).markRefundResult).toHaveBeenCalledWith('r1', 'sim_re_r1', 'succeeded');

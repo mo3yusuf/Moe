@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, View } from 'react-native';
 import { Button, Card, Field, T } from '@/components/ui';
+import { AddressForm, type AddressValue } from '@/features/delivery/address-form';
 import { api } from '@/lib/api';
 import { config } from '@/lib/config';
 import { useAuth } from '@/providers/auth';
@@ -16,6 +17,7 @@ interface BasketResponse {
   quote?: { subtotalCents: number; serviceFeeCents: number; totalCents: number; gstCents: number; currency: string } | null;
   location?: { isOpen: boolean; acceptingOrders: boolean; pickupEnabled: boolean; prepTimeMinutes: number } | null;
   canCheckout?: boolean;
+  delivery?: { available: boolean; radiusKm: number | null; minOrderCents: number | null };
 }
 
 export default function BasketScreen() {
@@ -26,6 +28,15 @@ export default function BasketScreen() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const [fulfilment, setFulfilment] = useState<'pickup' | 'delivery'>('pickup');
+  const [address, setAddress] = useState<AddressValue | null>(null);
+  const [dq, setDq] = useState<{ deliveryFeeCents: number; etaMinutes: number; quote: { totalCents: number; gstCents: number } } | null>(null);
+
+  async function getDeliveryQuote() {
+    if (!address) return;
+    try { setDq(await api('/v1/delivery/quote', { body: { address } })); }
+    catch (e) { setDq(null); Alert.alert('Delivery unavailable', e instanceof Error ? e.message : 'Please try pickup'); }
+  }
   // One idempotency key per checkout attempt: double taps / retries can never create two orders.
   const idempotencyKey = useRef(Crypto.randomUUID());
 
@@ -42,7 +53,7 @@ export default function BasketScreen() {
     setBusy(true);
     try {
       const res = await api<{ order: { id: string; totalCents: number }; payment: { mode: string; clientSecret?: string; testMode?: boolean } }>('/v1/checkout', {
-        body: { pickupName, note: note || null, idempotencyKey: idempotencyKey.current },
+        body: { pickupName, note: note || null, idempotencyKey: idempotencyKey.current, fulfilment, ...(fulfilment === 'delivery' ? { deliveryAddress: address } : {}) },
       });
       idempotencyKey.current = Crypto.randomUUID();
       if (res.payment.mode === 'simulated') router.replace({ pathname: '/pay/[id]', params: { id: res.order.id, total: String(res.order.totalCents) } });
@@ -101,18 +112,37 @@ export default function BasketScreen() {
           </View>
         </Card>
       ))}
+      {data.delivery?.available ? (
+        <Card>
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <Button title="Pickup" variant={fulfilment === 'pickup' ? 'primary' : 'secondary'} onPress={() => { setFulfilment('pickup'); setDq(null); }} style={{ flex: 1 }} />
+            <Button title="Delivery" variant={fulfilment === 'delivery' ? 'primary' : 'secondary'} onPress={() => setFulfilment('delivery')} style={{ flex: 1 }} />
+          </View>
+          {fulfilment === 'delivery' ? (
+            <>
+              <AddressForm onChange={(a) => { setAddress(a); setDq(null); }} />
+              <Button title="Check delivery fee" variant="secondary" onPress={getDeliveryQuote} disabled={!address} />
+              {dq ? <T>Delivery {formatMoney(dq.deliveryFeeCents)} · about {dq.etaMinutes} min after pickup · total {formatMoney(dq.quote.totalCents)}</T> : null}
+            </>
+          ) : null}
+        </Card>
+      ) : null}
       {q ? (
         <Card>
           <Row label="Subtotal" value={formatMoney(q.subtotalCents)} />
           <Row label="Service fee" value={formatMoney(q.serviceFeeCents)} />
-          <Row label="Total (AUD)" value={formatMoney(q.totalCents)} bold />
-          <T variant="small" muted>Includes GST of {formatMoney(q.gstCents)}. Prices are set by the restaurant.</T>
+          {fulfilment === 'delivery' && dq ? <Row label="Delivery fee" value={formatMoney(dq.deliveryFeeCents)} /> : null}
+          <Row label="Total (AUD)" value={formatMoney(fulfilment === 'delivery' && dq ? dq.quote.totalCents : q.totalCents)} bold />
+          <T variant="small" muted>Includes GST of {formatMoney(fulfilment === 'delivery' && dq ? dq.quote.gstCents : q.gstCents)}. Prices are set by the restaurant.</T>
         </Card>
       ) : null}
-      <Field label="Name for pickup" value={pickupName} onChangeText={setPickupName} maxLength={40} />
+      <Field label={fulfilment === 'delivery' ? 'Name for the courier' : 'Name for pickup'} value={pickupName} onChangeText={setPickupName} maxLength={40} />
       <Field label="Note to restaurant (optional)" value={note} onChangeText={setNote} maxLength={300} />
       <T variant="small" muted>The restaurant sees your pickup name and order only — never your email or phone number.</T>
-      <Button title={q ? `Place pickup order · ${formatMoney(q.totalCents)}` : 'Place order'} onPress={checkout} loading={busy} disabled={!data.canCheckout || !pickupName.trim()} />
+      <Button
+        title={fulfilment === 'delivery' ? (dq ? `Place delivery order · ${formatMoney(dq.quote.totalCents)}` : 'Check the delivery fee first') : q ? `Place pickup order · ${formatMoney(q.totalCents)}` : 'Place order'}
+        onPress={checkout} loading={busy}
+        disabled={!data.canCheckout || !pickupName.trim() || (fulfilment === 'delivery' && !dq)} />
     </ScrollView>
   );
 }

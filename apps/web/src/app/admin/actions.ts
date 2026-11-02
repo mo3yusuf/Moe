@@ -44,3 +44,5 @@ export async function setTicketStatus(id: string, status: string) {
   if (error) throw new Error(error.message);
   revalidatePath('/admin/support');
 }
+
+export async function refreshSimilarity() { await rpc('refresh_video_similarity', {}, '/admin/recommendations'); }

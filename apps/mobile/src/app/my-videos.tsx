@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Alert, FlatList, TextInput, View } from 'react-native';
+import { formatMoney } from '@crave/core';
+import * as WebBrowser from 'expo-web-browser';
 import { Button, Card, Field, T } from '@/components/ui';
+import { api } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth';
 import { colors, space } from '@/theme/tokens';
@@ -22,6 +25,15 @@ export default function MyVideos() {
   const [handle, setHandle] = useState('');
   const [appeal, setAppeal] = useState<Record<string, string>>({});
   const [appealed, setAppealed] = useState<Set<string>>(new Set());
+  const [earnings, setEarnings] = useState<{ payoutsEnabled: boolean; payoutsConnected: boolean; totals: Record<'pending' | 'approved' | 'paid' | 'void', number> } | null>(null);
+
+  async function setUpPayouts() {
+    try {
+      const { url } = await api<{ url: string }>('/v1/creators/me/payouts/onboarding', { method: 'POST' });
+      await WebBrowser.openBrowserAsync(url);
+      api<typeof earnings>('/v1/creators/me/earnings').then(setEarnings).catch(() => {});
+    } catch (e) { Alert.alert('Payouts', e instanceof Error ? e.message : 'Please try again'); }
+  }
 
   async function submitAppeal(videoId: string) {
     if (!supabase || !uid) return;
@@ -42,6 +54,7 @@ export default function MyVideos() {
     ]);
     setVideos((v.data as unknown as V[]) ?? []);
     setCreator(c.data ?? null);
+    if (c.data?.affiliate_status === 'approved') api<typeof earnings>('/v1/creators/me/earnings').then(setEarnings).catch(() => {});
   }
   useEffect(() => { void load(); }, [uid]);
 
@@ -83,7 +96,13 @@ export default function MyVideos() {
             <Card>
               <T variant="heading">@{creator.handle}{creator.is_verified ? ' ✓' : ''}</T>
               <T muted>{totals.views} views (3s+) · {totals.craves} craves · {totals.likes} likes</T>
-              <T variant="small" muted>Orders from your videos will appear here once ordering launches.</T>
+              {earnings ? (
+                <View style={{ gap: space.xs }}>
+                  <T variant="heading">Earnings</T>
+                  <T muted>{formatMoney(earnings.totals.pending)} pending (refund window) · {formatMoney(earnings.totals.approved)} ready · {formatMoney(earnings.totals.paid)} paid</T>
+                  {!earnings.payoutsEnabled ? <Button title={earnings.payoutsConnected ? 'Finish payout setup' : 'Set up payouts'} variant="secondary" onPress={setUpPayouts} /> : <T variant="small" muted>Payouts are sent automatically once you have $10 or more ready.</T>}
+                </View>
+              ) : null}
               {creator.affiliate_status === 'none' || creator.affiliate_status === 'rejected'
                 ? <Button title="Apply for affiliate partnerships" variant="secondary" onPress={applyAffiliate} />
                 : <T variant="small" muted>Affiliate status: {creator.affiliate_status}</T>}

@@ -158,7 +158,12 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
           .gte('created_at', new Date(Date.now() - 3 * 86_400_000).toISOString()).order('created_at', { ascending: false }).limit(500),
       ]);
       if (signals.error) throw new Error(`signals: ${signals.error.message}`);
+      const positives = [...new Set((signals.data ?? []).filter((r: any) => ['right_swipe', 'like', 'order', 'save'].includes(r.kind) && r.video_id).map((r: any) => r.video_id))].slice(-50);
+      const sims = positives.length
+        ? await admin.from('video_similarity').select('video_id, similar_video_id, score').in('video_id', positives).limit(1500)
+        : { data: [] as any[] };
       return {
+        similarities: (sims.data ?? []).map((r: any) => ({ videoId: r.video_id, similarVideoId: r.similar_video_id, score: r.score })),
         preferences,
         weights: weights.data?.value ?? null,
         resetAt: profile.data?.taste_reset_at ? new Date(profile.data.taste_reset_at) : null,
@@ -411,6 +416,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       const { data, error } = await admin.rpc('create_pending_order', {
         p_user_id: i.userId, p_restaurant_id: i.restaurantId, p_location_id: i.locationId, p_pickup_name: i.pickupName,
         p_note: i.note, p_scheduled_for: i.scheduledFor, p_source_video_id: i.sourceVideoId, p_quote: i.quote, p_idempotency_key: i.idempotencyKey,
+        p_fulfilment: i.fulfilment ?? 'pickup',
       }).single();
       if (error) throw new Error(`create order: ${error.message}`);
       const o = data as any;
@@ -545,6 +551,74 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       return Number(await rpcOrThrow('run_fraud_rules', {}));
     },
 
+    async creatorForPayouts(userId) {
+      const { data } = await admin.from('creators').select('handle, affiliate_status, stripe_account_id, payouts_enabled').eq('user_id', userId).maybeSingle();
+      return data ? { handle: data.handle, affiliateStatus: data.affiliate_status, stripeAccountId: data.stripe_account_id, payoutsEnabled: data.payouts_enabled } : null;
+    },
+    async setCreatorStripeAccount(userId, accountId) {
+      const { error } = await admin.from('creators').update({ stripe_account_id: accountId }).eq('user_id', userId).is('stripe_account_id', null);
+      if (error) throw new Error(`creator account: ${error.message}`);
+    },
+    async setCreatorStripeStatus(accountId, enabled) {
+      await rpcOrThrow('set_creator_stripe_status', { p_account_id: accountId, p_payouts_enabled: enabled });
+    },
+    async creatorEarnings(userId) {
+      const { data, error } = await admin.from('creator_commissions')
+        .select('amount_cents, status, created_at, creator_attributions(orders(order_number), videos(caption))')
+        .eq('creator_id', userId).order('created_at', { ascending: false }).limit(100);
+      if (error) throw new Error(`earnings: ${error.message}`);
+      const totals = { pending: 0, approved: 0, paid: 0, void: 0 };
+      const items = (data ?? []).map((r: any) => {
+        totals[r.status as keyof typeof totals] += r.amount_cents;
+        return { amountCents: r.amount_cents, status: r.status, createdAt: r.created_at,
+          orderNumber: r.creator_attributions?.orders?.order_number ?? null, videoCaption: r.creator_attributions?.videos?.caption ?? null };
+      });
+      return { totals, items };
+    },
+    async approveDueCommissions(days) { return Number(await rpcOrThrow('approve_due_creator_commissions', { p_days: days })); },
+    async creatorPayoutsDue(min) {
+      const data = await rpcOrThrow('creator_payouts_due', { p_min_cents: min });
+      return (data ?? []).map((r: any) => ({ creatorId: r.creator_id, stripeAccountId: r.stripe_account_id, amountCents: Number(r.amount_cents), commissionIds: r.commission_ids }));
+    },
+    async markCommissionsPaid(ids, transferId) { return Number(await rpcOrThrow('mark_commissions_paid', { p_commission_ids: ids, p_transfer_id: transferId })); },
+    async refreshSimilarity() { return Number(await rpcOrThrow('refresh_video_similarity', {})); },
+
+    async deliveryLocation(locationId) {
+      const { data } = await admin.from('restaurant_locations').select('delivery_enabled, delivery_radius_km, delivery_min_order_cents, lat, lng, address_line1, suburb, region, postcode').eq('id', locationId).maybeSingle();
+      return data ? { deliveryEnabled: data.delivery_enabled, deliveryRadiusKm: data.delivery_radius_km == null ? null : Number(data.delivery_radius_km),
+        deliveryMinOrderCents: data.delivery_min_order_cents, lat: data.lat, lng: data.lng, address: `${data.address_line1}, ${data.suburb} ${data.region} ${data.postcode}` } : null;
+    },
+    async createDelivery(orderId, provider, quoteId, feeCents, a) {
+      const { error } = await admin.from('deliveries').insert({
+        order_id: orderId, provider, quote_id: quoteId, fee_cents: feeCents, address_line1: a.line1, address_line2: a.line2 ?? null,
+        suburb: a.suburb, region: a.region, postcode: a.postcode, lat: a.lat, lng: a.lng, contact_phone: a.contactPhone, dropoff_instructions: a.instructions ?? null,
+      });
+      if (error) throw new Error(`delivery: ${error.message}`);
+    },
+    async deliveriesToDispatch(limit) {
+      const data = await rpcOrThrow('deliveries_to_dispatch', { p_limit: limit });
+      return (data ?? []).map((r: any) => ({
+        deliveryId: r.delivery_id, orderNumber: r.order_number, quoteId: r.quote_id, provider: r.provider, restaurantName: r.restaurant_name,
+        pickupAddress: r.pickup_address, pickupLat: r.pickup_lat, pickupLng: r.pickup_lng, pickupPhone: r.pickup_phone, prepMinutes: r.prep_minutes,
+        dropoff: { line1: r.dropoff.line1, line2: r.dropoff.line2, suburb: r.dropoff.suburb, region: r.dropoff.region, postcode: r.dropoff.postcode,
+          lat: r.dropoff.lat, lng: r.dropoff.lng, contactPhone: r.dropoff.phone, instructions: r.dropoff.instructions, name: r.dropoff.name },
+        totalCents: r.total_cents,
+      }));
+    },
+    async markDeliveryRequested(id, externalId, trackingUrl) {
+      const { error } = await admin.from('deliveries').update({ status: 'requested', external_id: externalId, tracking_url: trackingUrl }).eq('id', id).eq('status', 'quoted');
+      if (error) throw new Error(`delivery: ${error.message}`);
+    },
+    async markDeliveryFailed(id, reason) {
+      await admin.from('deliveries').update({ status: 'failed' }).eq('id', id);
+      await admin.from('fraud_flags').insert({ entity_type: 'order', entity_id: (await admin.from('deliveries').select('order_id').eq('id', id).single()).data!.order_id,
+        rule: 'delivery_dispatch_failed', severity: 'high', details: { reason } });
+    },
+    async applyDeliveryUpdate(provider, u) {
+      await rpcOrThrow('apply_delivery_update', { p_provider: provider, p_external_id: u.externalId, p_status: u.status, p_tracking_url: u.trackingUrl,
+        p_courier_name: u.courierName, p_eta: u.eta?.toISOString() ?? null, p_event_at: u.eventAt.toISOString() });
+    },
+
     async listSaved(userId, collection) {
       const { data, error } = await admin.from('saved_meals').select('video_id, menu_item_id, created_at, collection, menu_items(name, price_cents, currency, is_available, restaurants(name))')
         .eq('user_id', userId).eq('collection', collection).order('created_at', { ascending: false }).limit(200);
@@ -560,7 +634,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
   return store;
 }
 
-const ORDER_SELECT = 'id, order_number, status, restaurant_id, pickup_name, customer_note, scheduled_for, created_at, placed_at, estimated_ready_at, subtotal_cents, service_fee_cents, total_cents, gst_cents, currency, cancel_reason, restaurants(name), restaurant_locations(address_line1, suburb, postcode), order_items(name, quantity, unit_price_cents, line_total_cents, options, notes), order_status_events(to_status, created_at, note), refunds(amount_cents, status, reason), payments(provider, status, is_test_mode)';
+const ORDER_SELECT = 'id, order_number, status, restaurant_id, pickup_name, customer_note, scheduled_for, created_at, placed_at, estimated_ready_at, subtotal_cents, service_fee_cents, total_cents, gst_cents, currency, cancel_reason, restaurants(name), restaurant_locations(address_line1, suburb, postcode), order_items(name, quantity, unit_price_cents, line_total_cents, options, notes), order_status_events(to_status, created_at, note), refunds(amount_cents, status, reason), payments(provider, status, is_test_mode), fulfilment, delivery_fee_cents, deliveries(status, tracking_url, courier_name, estimated_dropoff_at, suburb)';
 
 function toBasket(b: any): BasketRow {
   return {
@@ -584,5 +658,7 @@ function toOrderView(o: any): OrderView {
     events: (o.order_status_events ?? []).map((e: any) => ({ status: e.to_status, at: e.created_at, note: e.note })).sort((a: any, b: any) => a.at.localeCompare(b.at)),
     refunds: (o.refunds ?? []).map((r: any) => ({ amountCents: r.amount_cents, status: r.status, reason: r.reason })),
     payment: pay ? { provider: pay.provider, status: pay.status, isTestMode: pay.is_test_mode } : null,
+    fulfilment: o.fulfilment, deliveryFeeCents: o.delivery_fee_cents ?? 0,
+    delivery: (() => { const d = Array.isArray(o.deliveries) ? o.deliveries[0] : o.deliveries; return d ? { status: d.status, trackingUrl: d.tracking_url, courierName: d.courier_name, estimatedDropoffAt: d.estimated_dropoff_at, suburb: d.suburb } : null; })(),
   };
 }

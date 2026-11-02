@@ -20,7 +20,7 @@ describe('rulesRanker', () => {
     const recordImpressions = vi.fn(async () => {});
     const store = { loadRankingContext: async () => ctxWith([swipe('right_swipe'), swipe('right_swipe', sushi2)]), recordImpressions } as unknown as DataStore;
     const res = await rulesRanker(store, { random: seededRandom(1) }).rank({ userId: 'u', personalised: true, candidates: [burger, tacos, sushi, sushi2], limit: 4, now: NOW });
-    expect(res.modelVersion).toBe('rules-v1');
+    expect(res.modelVersion).toBe('rules-v2-cf');
     const top = res.items[0]!.candidate;
     expect(top.itemCuisine).toBe('japanese');
     expect(recordImpressions).toHaveBeenCalledOnce();

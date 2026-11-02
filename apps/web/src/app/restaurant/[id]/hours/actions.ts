@@ -37,7 +37,14 @@ export async function setAccepting(restaurantId: string, locationId: string, acc
 export async function saveSettings(restaurantId: string, locationId: string, form: FormData) {
   const supabase = await supabaseServer();
   const prep = Math.min(120, Math.max(5, Number(form.get('prep')) || 15));
-  await supabase.from('restaurant_locations').update({ prep_time_minutes: prep, pickup_enabled: form.get('pickup') === 'on' }).eq('id', locationId);
+  const radius = Number(form.get('radius'));
+  const minOrder = Math.round(Number(form.get('minOrder') || 20) * 100);
+  await supabase.from('restaurant_locations').update({
+    prep_time_minutes: prep, pickup_enabled: form.get('pickup') === 'on',
+    delivery_enabled: form.get('delivery') === 'on',
+    delivery_radius_km: radius > 0 && radius <= 15 ? radius : null,
+    delivery_min_order_cents: Number.isFinite(minOrder) && minOrder >= 0 ? minOrder : 2000,
+  }).eq('id', locationId);
   await supabase.from('restaurants').update({ accepts_advance_orders: form.get('advance') === 'on' }).eq('id', restaurantId);
   revalidatePath(`/restaurant/${restaurantId}/hours`);
 }

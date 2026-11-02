@@ -17,7 +17,7 @@ export default async function OrdersPage({ params }: { params: Promise<{ id: str
   const { supabase } = await loadMemberRestaurant(id);
   const since = new Date(Date.now() - 24 * 3600_000).toISOString();
   const { data: orders } = await supabase.from('orders')
-    .select('id, order_number, status, pickup_name, customer_note, scheduled_for, placed_at, estimated_ready_at, subtotal_cents, commission_cents, restaurant_net_cents, cancel_reason, source_video_id, order_items(name, quantity, options, notes)')
+    .select('id, order_number, status, pickup_name, customer_note, scheduled_for, placed_at, estimated_ready_at, subtotal_cents, commission_cents, restaurant_net_cents, cancel_reason, source_video_id, fulfilment, order_items(name, quantity, options, notes), deliveries(status, suburb, courier_name)')
     .eq('restaurant_id', id).neq('status', 'pending_payment').gte('created_at', since).order('created_at', { ascending: false });
   const active = (orders ?? []).filter((o) => ACTIVE.includes(o.status));
   const done = (orders ?? []).filter((o) => !ACTIVE.includes(o.status));
@@ -33,7 +33,10 @@ export default async function OrdersPage({ params }: { params: Promise<{ id: str
                 <strong style={{ fontSize: 20 }}>{o.order_number}</strong>
                 <span className={`badge ${o.status === 'placed' ? 'warn' : 'ok'}`}>{ORDER_STATUS_LABELS[o.status as OrderStatus]}</span>
               </div>
-              <div>Pickup name: <strong>{o.pickup_name}</strong>{o.scheduled_for ? ` · for ${fmtTime(o.scheduled_for)}` : ' · ASAP'}</div>
+              {o.fulfilment === 'delivery' ? (
+                <div className="notice">DELIVERY to {(o as any).deliveries?.suburb ?? (o as any).deliveries?.[0]?.suburb} — courier: {(((o as any).deliveries?.status ?? (o as any).deliveries?.[0]?.status) ?? 'pending').replace('_', ' ')}. Hand over to the partner courier; don’t give the order to anyone else.</div>
+              ) : null}
+              <div>{o.fulfilment === 'delivery' ? 'Customer' : 'Pickup name'}: <strong>{o.pickup_name}</strong>{o.scheduled_for ? ` · for ${fmtTime(o.scheduled_for)}` : ' · ASAP'}</div>
               <div className="muted">Placed {fmtTime(o.placed_at)}{o.estimated_ready_at ? ` · ready by ${fmtTime(o.estimated_ready_at)}` : ''}{o.source_video_id ? ' · from a CRAVE video' : ''}</div>
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {(o.order_items ?? []).map((i: any, idx: number) => (

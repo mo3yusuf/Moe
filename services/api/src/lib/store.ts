@@ -53,6 +53,8 @@ export interface RankingContext {
   preferences: ExplicitPreferences;
   /** Admin overrides from platform_settings.ranking_weights (validated before use). */
   weights: unknown;
+  /** Item-item similarities for videos the user responded to positively (collaborative filtering). */
+  similarities?: { videoId: string; similarVideoId: string; score: number }[];
 }
 
 export interface ImpressionRow {
@@ -120,6 +122,10 @@ export interface OrderView {
   events: { status: string; at: string; note: string | null }[];
   refunds: { amountCents: number; status: string; reason: string }[];
   payment: { provider: string; status: string; isTestMode: boolean } | null;
+  fulfilment: 'pickup' | 'delivery';
+  deliveryFeeCents: number;
+  /** Only what the delivery partner reported. */
+  delivery: { status: string; trackingUrl: string | null; courierName: string | null; estimatedDropoffAt: string | null; suburb: string } | null;
 }
 
 export interface DataStore {
@@ -152,7 +158,7 @@ export interface DataStore {
   removeBasketItem(basketId: string, itemId: string): Promise<boolean>;
   createPendingOrder(input: {
     userId: string; restaurantId: string; locationId: string; pickupName: string; note: string | null;
-    scheduledFor: string | null; sourceVideoId: string | null; quote: Quote; idempotencyKey: string;
+    scheduledFor: string | null; sourceVideoId: string | null; quote: Quote; idempotencyKey: string; fulfilment?: 'pickup' | 'delivery';
   }): Promise<{ id: string; orderNumber: string; status: string; totalCents: number }>;
   confirmPayment(orderId: string, provider: 'simulated' | 'stripe', providerRef: string, amountCents: number, applicationFeeCents: number, testMode: boolean): Promise<void>;
   listOrders(userId: string): Promise<OrderView[]>;
@@ -179,6 +185,24 @@ export interface DataStore {
   /** Deletes the auth user (cascading personal data) and their uploaded files; orders are kept anonymised. */
   deleteUserAccount(requestId: string, userId: string): Promise<void>;
   runFraudRules(): Promise<number>;
+  // --- Phase 8: creator rewards ---
+  creatorForPayouts(userId: string): Promise<{ handle: string; affiliateStatus: string; stripeAccountId: string | null; payoutsEnabled: boolean } | null>;
+  setCreatorStripeAccount(userId: string, accountId: string): Promise<void>;
+  setCreatorStripeStatus(accountId: string, payoutsEnabled: boolean): Promise<void>;
+  creatorEarnings(userId: string): Promise<{ totals: Record<'pending' | 'approved' | 'paid' | 'void', number>; items: { amountCents: number; status: string; createdAt: string; orderNumber: string | null; videoCaption: string | null }[] }>;
+  approveDueCommissions(days: number): Promise<number>;
+  creatorPayoutsDue(minCents: number): Promise<{ creatorId: string; stripeAccountId: string; amountCents: number; commissionIds: string[] }[]>;
+  markCommissionsPaid(ids: string[], transferId: string): Promise<number>;
+  refreshSimilarity(): Promise<number>;
+  // --- Phase 8: delivery ---
+  deliveryLocation(locationId: string): Promise<{ deliveryEnabled: boolean; deliveryRadiusKm: number | null; deliveryMinOrderCents: number; lat: number; lng: number; address: string } | null>;
+  createDelivery(orderId: string, provider: string, quoteId: string, feeCents: number, address: import('@crave/core').DeliveryAddress): Promise<void>;
+  deliveriesToDispatch(limit: number): Promise<{ deliveryId: string; orderNumber: string; quoteId: string; provider: string; restaurantName: string;
+    pickupAddress: string; pickupLat: number; pickupLng: number; pickupPhone: string | null; prepMinutes: number;
+    dropoff: import('@crave/core').DeliveryAddress & { name: string }; totalCents: number }[]>;
+  markDeliveryRequested(deliveryId: string, externalId: string, trackingUrl: string | null): Promise<void>;
+  markDeliveryFailed(deliveryId: string, reason: string): Promise<void>;
+  applyDeliveryUpdate(provider: string, u: import('./delivery').DeliveryStatusUpdate): Promise<void>;
   getPreferences(userId: string): Promise<ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }>;
   setPreferences(userId: string, prefs: ExplicitPreferences & { preferredFulfilment: 'pickup' | 'delivery' | null }): Promise<void>;
 }

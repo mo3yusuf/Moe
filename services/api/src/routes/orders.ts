@@ -1,4 +1,4 @@
-import { quoteBasket, validateSelection, type Quote } from '@crave/core';
+import { AU_STATES, checkDeliveryEligibility, isValidAuPhone, quoteBasket, validateSelection, type DeliveryAddress, type Quote } from '@crave/core';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppEnv } from '../app';
@@ -14,11 +14,24 @@ const AddItem = z.object({
   sourceVideoId: Uuid.nullish(),
   replaceBasket: z.boolean().default(false),
 });
+const Address = z.object({
+  line1: z.string().trim().min(3).max(120),
+  line2: z.string().trim().max(120).nullish(),
+  suburb: z.string().trim().min(2).max(60),
+  region: z.enum(AU_STATES),
+  postcode: z.string().regex(/^\d{4}$/),
+  lat: z.number().min(-44).max(-10),     // mainland Australia + Tasmania
+  lng: z.number().min(112).max(154),
+  contactPhone: z.string().refine(isValidAuPhone, 'Enter a valid Australian phone number'),
+  instructions: z.string().trim().max(200).nullish(),
+});
 const Checkout = z.object({
   pickupName: z.string().trim().min(1).max(40),
   note: z.string().trim().max(300).nullish(),
   idempotencyKey: Uuid,
   scheduledFor: z.iso.datetime().nullish(),
+  fulfilment: z.enum(['pickup', 'delivery']).default('pickup'),
+  deliveryAddress: Address.optional(),
 });
 
 interface PricedBasket {
@@ -29,7 +42,7 @@ interface PricedBasket {
 }
 
 /** Re-prices a basket from current database prices. Lines that became invalid are flagged, not dropped. */
-async function priceBasket(store: DataStore, basket: BasketRow): Promise<PricedBasket> {
+async function priceBasket(store: DataStore, basket: BasketRow, deliveryFeeCents = 0): Promise<PricedBasket> {
   const defs = await store.itemDefs([...new Set(basket.items.map((i) => i.menuItemId))]);
   const valid: Parameters<typeof quoteBasket>[0] = [];
   let restaurantName = '';
@@ -48,7 +61,7 @@ async function priceBasket(store: DataStore, basket: BasketRow): Promise<PricedB
     };
   });
   let quote: Quote | null = null;
-  if (valid.length) quote = quoteBasket(valid, { commissionRateBps: commission, serviceFee: await store.serviceFeeConfig() });
+  if (valid.length) quote = quoteBasket(valid, { commissionRateBps: commission, serviceFee: await store.serviceFeeConfig(), deliveryFeeCents });
   return { basket, restaurantName, lines, quote };
 }
 
@@ -60,7 +73,9 @@ orderRoutes.get('/basket', async (c) => {
   if (!basket || !basket.items.length) return c.json({ basket: null });
   const priced = await priceBasket(store, basket);
   const loc = await store.locationStatus(basket.locationId);
+  const dl = c.get('deps').delivery ? await store.deliveryLocation(basket.locationId) : null;
   return c.json({
+    delivery: { available: !!dl?.deliveryEnabled && !!dl.deliveryRadiusKm, radiusKm: dl?.deliveryRadiusKm ?? null, minOrderCents: dl?.deliveryMinOrderCents ?? null },
     basket: { id: basket.id, restaurantId: basket.restaurantId, restaurantName: priced.restaurantName, lines: priced.lines },
     quote: priced.quote,
     location: loc,
@@ -114,6 +129,31 @@ orderRoutes.delete('/basket', async (c) => {
   return c.json({ ok: true });
 });
 
+/** Server-side delivery quote for the current basket and address (fee from the delivery partner). */
+async function quoteDelivery(c: any, basket: BasketRow, subtotalCents: number, address: DeliveryAddress) {
+  const { store, delivery } = c.get('deps');
+  if (!delivery) throw new ApiError(422, 'delivery_unavailable', 'Delivery isn’t available yet — pickup only');
+  const loc = await store.deliveryLocation(basket.locationId);
+  if (!loc) throw notFound('Restaurant location');
+  const ok = checkDeliveryEligibility(loc, address, subtotalCents);
+  if (!ok.ok) throw new ApiError(422, ok.reason, ok.message);
+  const q = await delivery.quote({ pickup: { lat: loc.lat, lng: loc.lng, address: loc.address }, dropoff: address, orderValueCents: subtotalCents });
+  return { ...q, provider: delivery.name as string, distanceKm: Math.round(ok.distanceKm * 10) / 10 };
+}
+
+orderRoutes.post('/delivery/quote', async (c) => {
+  const parsed = z.object({ address: Address }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) throw badRequest(parsed.error.issues[0]?.message ?? 'Check the delivery address');
+  const { store } = c.get('deps');
+  const basket = await store.getBasket(c.get('user').id);
+  if (!basket || !basket.items.length) throw badRequest('Your basket is empty', 'empty_basket');
+  const priced = await priceBasket(store, basket);
+  if (!priced.quote) throw new ApiError(422, 'basket_changed', 'Your basket needs updating');
+  const dq = await quoteDelivery(c, basket, priced.quote.subtotalCents, parsed.data.address);
+  const withDelivery = await priceBasket(store, basket, dq.feeCents);
+  return c.json({ deliveryFeeCents: dq.feeCents, etaMinutes: dq.etaMinutes, distanceKm: dq.distanceKm, quote: withDelivery.quote });
+});
+
 orderRoutes.post('/checkout', async (c) => {
   const { store, paymentsMode } = c.get('deps');
   if (paymentsMode === 'disabled') throw new ApiError(503, 'checkout_disabled', 'Ordering is not available yet');
@@ -123,9 +163,19 @@ orderRoutes.post('/checkout', async (c) => {
   const basket = await store.getBasket(userId);
   if (!basket || !basket.items.length) throw badRequest('Your basket is empty', 'empty_basket');
 
-  const priced = await priceBasket(store, basket);
+  let priced = await priceBasket(store, basket);
   const issue = priced.lines.find((l) => l.issue);
   if (issue || !priced.quote) throw new ApiError(422, 'basket_changed', issue ? `${issue.name}: ${issue.issue}` : 'Your basket needs updating');
+
+  // Delivery: re-quote with the partner on the server (the app's displayed fee is never trusted).
+  let deliveryQuote: Awaited<ReturnType<typeof quoteDelivery>> | null = null;
+  if (parsed.data.fulfilment === 'delivery') {
+    if (!parsed.data.deliveryAddress) throw badRequest('Add a delivery address');
+    if (parsed.data.scheduledFor) throw badRequest('Scheduled delivery isn’t available yet');
+    deliveryQuote = await quoteDelivery(c, basket, priced.quote.subtotalCents, parsed.data.deliveryAddress);
+    priced = await priceBasket(store, basket, deliveryQuote.feeCents);
+    if (!priced.quote) throw new ApiError(422, 'basket_changed', 'Your basket needs updating');
+  }
 
   // Never accept orders the restaurant can't fulfil.
   const scheduledFor = parsed.data.scheduledFor ? new Date(parsed.data.scheduledFor) : null;
@@ -137,7 +187,8 @@ orderRoutes.post('/checkout', async (c) => {
   const acceptsAdvance = defs.get(basket.items[0]!.menuItemId)?.acceptsAdvanceOrders ?? false;
   if (scheduledFor && !acceptsAdvance) throw badRequest('This restaurant does not take advance orders');
   const loc = await store.locationStatus(basket.locationId, scheduledFor ?? undefined);
-  if (!loc?.pickupEnabled) throw new ApiError(422, 'pickup_unavailable', 'Pickup is not available at this restaurant');
+  if (!deliveryQuote && !loc?.pickupEnabled) throw new ApiError(422, 'pickup_unavailable', 'Pickup is not available at this restaurant');
+  if (!loc) throw notFound('Restaurant location');
   if (!loc.acceptingOrders) throw new ApiError(422, 'not_accepting', 'The restaurant is not taking orders right now');
   if (!loc.isOpen) throw new ApiError(422, 'restaurant_closed', scheduledFor ? 'The restaurant is closed at that time' : 'The restaurant is closed right now');
 
@@ -156,18 +207,22 @@ orderRoutes.post('/checkout', async (c) => {
   const order = await store.createPendingOrder({
     userId, restaurantId: basket.restaurantId, locationId: basket.locationId, pickupName: parsed.data.pickupName,
     note: parsed.data.note ?? null, scheduledFor: scheduledFor?.toISOString() ?? null, sourceVideoId,
-    quote: priced.quote, idempotencyKey: parsed.data.idempotencyKey,
+    quote: priced.quote!, idempotencyKey: parsed.data.idempotencyKey, fulfilment: deliveryQuote ? 'delivery' : 'pickup',
   });
+  if (deliveryQuote) {
+    await store.createDelivery(order.id, deliveryQuote.provider, deliveryQuote.quoteId, deliveryQuote.feeCents, parsed.data.deliveryAddress!);
+  }
 
   if (paymentsMode === 'simulated') {
     return c.json({ order, quote: priced.quote, payment: { mode: 'simulated', notice: 'TEST MODE — no real payment is taken.' } }, 201);
   }
 
   // CRAVE's application fee = commission + service fee; the restaurant receives its net via the transfer.
-  const applicationFee = priced.quote.totalCents - priced.quote.restaurantNetCents;
+  // Includes the delivery fee: CRAVE pays the delivery partner.
+  const applicationFee = priced.quote!.totalCents - priced.quote!.restaurantNetCents;
   const intent = await payments!.createIntent({
     orderId: order.id, orderNumber: order.orderNumber, amountCents: order.totalCents, applicationFeeCents: applicationFee,
-    currency: priced.quote.currency, destinationAccount: stripeAccount!, onBehalfOf: stripeOnBehalfOf ?? true,
+    currency: priced.quote!.currency, destinationAccount: stripeAccount!, onBehalfOf: stripeOnBehalfOf ?? true,
   });
   await store.recordPaymentIntent(order.id, intent.id, order.totalCents, applicationFee, payments!.testMode);
   return c.json({

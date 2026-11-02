@@ -1,5 +1,5 @@
 import {
-  buildTasteProfile, emptyProfile, LAUNCH_CITY, mergeRankingConfig, rankFeed,
+  buildTasteProfile, collaborativeScores, emptyProfile, LAUNCH_CITY, mergeRankingConfig, rankFeed,
   type FeedCandidate, type FeedItem,
 } from '@crave/core';
 import type { DataStore } from './store';
@@ -52,8 +52,12 @@ export function rulesRanker(store: DataStore, opts: { random?: () => number; onE
       const profile = personalised
         ? buildTasteProfile({ signals: ctx.signals, impressions: ctx.impressions, now, resetAt: ctx.resetAt, timezone: LAUNCH_CITY.timezone }, merged)
         : emptyProfile();
+      const positives = personalised
+        ? ctx.signals.filter((s) => ['right_swipe', 'like', 'order', 'save'].includes(s.kind) && s.videoId).map((s) => s.videoId!)
+        : [];
       const ranked = rankFeed({
         candidates, profile, preferences: ctx.preferences, personalised, now, limit,
+        collaborative: personalised ? collaborativeScores(positives, ctx.similarities ?? []) : undefined,
         timezone: LAUNCH_CITY.timezone, random: opts.random,
       }, merged);
 

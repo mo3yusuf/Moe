@@ -22,7 +22,9 @@ export interface PaymentProvider {
   createIntent(input: CreateIntentInput): Promise<{ id: string; clientSecret: string }>;
   cancelIntent(intentId: string): Promise<void>;
   refund(input: { intentId: string; amountCents: number; idempotencyKey: string; full: boolean }): Promise<{ id: string; status: 'pending' | 'succeeded' | 'failed' }>;
-  createConnectedAccount(input: { restaurantId: string; restaurantName: string; email?: string }): Promise<string>;
+  createConnectedAccount(input: { restaurantId: string; restaurantName: string; email?: string; kind?: 'restaurant' | 'creator' }): Promise<string>;
+  /** Pays approved creator commissions from CRAVE's balance to the creator's connected account. */
+  transfer(input: { destination: string; amountCents: number; idempotencyKey: string; description: string }): Promise<{ id: string }>;
   onboardingLink(accountId: string, refreshUrl: string, returnUrl: string): Promise<string>;
   dashboardLink(accountId: string): Promise<string>;
   /** Verifies the webhook signature against the raw request body; throws if invalid. */
@@ -67,21 +69,29 @@ export function stripeProvider(opts: { secretKey: string; webhookSecrets: string
       }, { idempotencyKey: `refund-${idempotencyKey}` });
       return { id: r.id, status: r.status === 'succeeded' ? 'succeeded' : r.status === 'failed' || r.status === 'canceled' ? 'failed' : 'pending' };
     },
-    async createConnectedAccount({ restaurantId, restaurantName, email }) {
+    async createConnectedAccount({ restaurantId, restaurantName, email, kind = 'restaurant' }) {
       const acct = await stripe.accounts.create({
         country: 'AU',
         email,
-        business_profile: { name: restaurantName, mcc: '5814', product_description: 'Restaurant meals sold for pickup via CRAVE' },
+        business_profile: kind === 'restaurant'
+          ? { name: restaurantName, mcc: '5814', product_description: 'Restaurant meals sold for pickup via CRAVE' }
+          : { name: restaurantName, mcc: '7311', product_description: 'Food content creator earning affiliate commissions on CRAVE' },
         controller: {
           stripe_dashboard: { type: 'express' },
           fees: { payer: 'application' },
           losses: { payments: 'application' },
           requirement_collection: 'stripe',
         },
-        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-        metadata: { restaurant_id: restaurantId },
-      }, { idempotencyKey: `connect-account-${restaurantId}` });
+        // Creators only receive transfers; restaurants are also the settlement merchant for card payments.
+        capabilities: kind === 'restaurant' ? { card_payments: { requested: true }, transfers: { requested: true } } : { transfers: { requested: true } },
+        metadata: kind === 'restaurant' ? { restaurant_id: restaurantId } : { creator_id: restaurantId },
+      }, { idempotencyKey: `connect-account-${kind}-${restaurantId}` });
       return acct.id;
+    },
+    async transfer({ destination, amountCents, idempotencyKey, description }) {
+      const t = await stripe.transfers.create({ amount: amountCents, currency: 'aud', destination, description, transfer_group: idempotencyKey },
+        { idempotencyKey: `creator-transfer-${idempotencyKey}` });
+      return { id: t.id };
     },
     async onboardingLink(account, refresh_url, return_url) {
       return (await stripe.accountLinks.create({ account, refresh_url, return_url, type: 'account_onboarding' })).url;
