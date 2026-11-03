@@ -35,6 +35,9 @@ export default function Profile() {
         </View>
 
         <Card style={{ padding: 0 }}>
+          {me?.roles.includes('admin') ? (
+            <ListRow title="Review videos" subtitle="Admin: approve or reject new uploads" onPress={() => router.push('/review-videos')} />
+          ) : null}
           <ListRow title="Your Cravings" subtitle="Meals you swiped right on" onPress={() => router.push('/cravings')} />
           <ListRow title="Food preferences" subtitle="Cuisines, dietary requirements, spice, budget" onPress={() => router.push('/preferences')} />
           <ListRow title="Your taste profile" subtitle="What CRAVE has learned from your activity" onPress={() => router.push('/taste-profile')} />
