@@ -7,8 +7,7 @@ import { useEventListener } from 'expo';
 import * as Haptics from 'expo-haptics';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { memo, useEffect, useRef, useState, type ComponentProps } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image, Platform, Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Animated, {
   Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming,
@@ -18,7 +17,8 @@ import { colors, font, HIT, radius, space } from '@/theme/tokens';
 import { reportVideo } from '@/features/moderation/report';
 import { track, watchSession } from './events';
 import type { FeedEntry } from './use-feed';
-import { setSoundOn, useSoundOn } from './sound';
+import { useSoundOn } from './sound';
+import { Alert } from '@/lib/alert';
 
 export type InputMethod = 'gesture' | 'button' | 'accessibility_action';
 
@@ -51,7 +51,6 @@ function FeedVideoBase(props: FeedVideoProps) {
   const { item, width, height, isActive, preload, focused, bottomInset, orderingEnabled } = props;
   const shouldLoad = isActive || preload;
   const soundOn = useSoundOn();
-  const insets = useSafeAreaInsets();
   const player = useVideoPlayer(shouldLoad ? { uri: item.playbackUrl, useCaching: true } : null, (p) => {
     p.loop = true;
     p.muted = !soundOn; // browsers block autoplay with sound
@@ -203,8 +202,8 @@ function FeedVideoBase(props: FeedVideoProps) {
               <Text style={[font.title, { color: colors.textFaint }]}>{item.menuItem?.name ?? 'CRAVE'}</Text>
             </View>
           )}
-          <View style={styles.scrimTop} pointerEvents="none" />
-          <View style={styles.scrimBottom} pointerEvents="none" />
+          <Fade edge="top" height={150} maxOpacity={0.35} />
+          <Fade edge="bottom" height={340} maxOpacity={0.6} />
           <Animated.View style={[styles.hint, styles.hintRight, craveHint]} pointerEvents="none">
             <Text style={styles.hintText}>{SWIPE_LABELS.right}</Text>
           </Animated.View>
@@ -230,36 +229,27 @@ function FeedVideoBase(props: FeedVideoProps) {
         </View>
       ) : null}
 
-      {/* Action rail — outside the gesture detector so swipes never steal button taps. */}
-      {/* Sound toggle, top-right below the feed header (like TikTok's website). */}
-      <Pressable accessibilityRole="button" accessibilityLabel={soundOn ? 'Mute videos' : 'Turn sound on'} onPress={() => setSoundOn(!soundOn)}
-        hitSlop={10} style={[styles.sound, { top: insets.top + 56 }]}>
-        <Ionicons name={soundOn ? 'volume-high' : 'volume-mute'} size={20} color={colors.text} />
-        {!soundOn ? <Text style={[font.label, { color: colors.text }]}>Tap for sound</Text> : null}
-      </Pressable>
-
-      <View style={[styles.rail, { bottom: bottomInset + 150 }]}>
-        <RailButton icon={item.viewer.craved ? 'flame' : 'flame-outline'} label="Crave it" active={item.viewer.craved}
-          onPress={() => commit('right', 'button')} />
-        <RailButton icon="close" label="Not for me" onPress={() => commit('left', 'button')} />
+      {/* Action rail (TikTok-style) — outside the gesture detector so swipes never steal button taps. */}
+      <View style={[styles.rail, { bottom: bottomInset + (item.menuItem ? 150 : 96) }]}>
+        <RailButton icon={item.viewer.craved ? 'flame' : 'flame-outline'} label="Crave" active={item.viewer.craved}
+          a11yLabel="Crave it" onPress={() => commit('right', 'button')} />
         <RailButton icon={item.viewer.liked ? 'heart' : 'heart-outline'} label={String(item.stats.likes + (item.viewer.liked ? 1 : 0))}
           a11yLabel={item.viewer.liked ? 'Unlike' : 'Like'} active={item.viewer.liked} onPress={() => props.onToggleLike(item)} />
+        <RailButton icon="chatbubble-ellipses" label={String(item.stats.comments)} a11yLabel={`Comments (${item.stats.comments})`} onPress={() => props.onComments(item)} />
         <RailButton icon={item.viewer.saved ? 'bookmark' : 'bookmark-outline'} label="Save" active={item.viewer.saved}
           onPress={() => props.onToggleSave(item)} />
-        <RailButton icon="chatbubble-outline" label={String(item.stats.comments)} a11yLabel={`Comments (${item.stats.comments})`} onPress={() => props.onComments(item)} />
-        <RailButton icon="arrow-redo-outline" label="Share" onPress={() => props.onShare(item)} />
-        <RailButton icon="flag-outline" label="Report" onPress={() => reportVideo(item.videoId, item.creator ? { id: item.creator.id, handle: item.creator.handle } : undefined, props.onNext)} />
+        <RailButton icon="arrow-redo" label="Share" onPress={() => props.onShare(item)} />
+        <RailButton icon="ellipsis-horizontal" label="More" a11yLabel="More options" onPress={() => Alert.alert('More', undefined, [
+          { text: 'Not for me', onPress: () => commit('left', 'button') },
+          { text: 'Report video', style: 'destructive', onPress: () => reportVideo(item.videoId, item.creator ? { id: item.creator.id, handle: item.creator.handle } : undefined, props.onNext) },
+          { text: 'Cancel', style: 'cancel' },
+        ])} />
       </View>
 
       {/* Meal info and ordering. */}
       <View style={[styles.info, { paddingBottom: bottomInset + space.md }]} pointerEvents="box-none">
         {item.isSponsored ? (
           <View style={styles.sponsored}><Text style={[font.label, { color: colors.bg }]}>{item.sponsorDisclosure ?? 'Sponsored'}</Text></View>
-        ) : null}
-        {item.ranking?.reasons[0] ? (
-          <Text style={[font.label, styles.shadow, { color: colors.accent }]} accessibilityLabel={`Why you're seeing this: ${item.ranking.reasons[0]}`}>
-            ✦ {item.ranking.reasons[0]}
-          </Text>
         ) : null}
         {item.creator?.handle ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
@@ -272,6 +262,11 @@ function FeedVideoBase(props: FeedVideoProps) {
           </View>
         ) : null}
         {item.caption ? <Text style={[font.body, styles.shadow]} numberOfLines={2}>{item.caption}</Text> : null}
+        {item.ranking?.reasons[0] ? (
+          <Text style={[font.label, styles.shadow, { color: colors.textMuted, fontSize: 12 }]} accessibilityLabel={`Why you're seeing this: ${item.ranking.reasons[0]}`}>
+            ✦ {item.ranking.reasons[0]}
+          </Text>
+        ) : null}
         {item.restaurant ? (
           <Text style={[font.small, styles.shadow, { color: colors.textMuted }]}>
             {item.restaurant.name} · {item.restaurant.suburb}
@@ -283,7 +278,7 @@ function FeedVideoBase(props: FeedVideoProps) {
           <View style={styles.orderRow}>
             <View style={{ flex: 1 }}>
               <Text style={[font.heading, styles.shadow]} numberOfLines={2}>{item.menuItem.name}</Text>
-              <Text style={[font.title, styles.shadow, { color: colors.text }]}>{price}</Text>
+              <Text style={[font.heading, styles.shadow, { color: colors.text }]}>{price}</Text>
               {item.menuItem.dietaryTags.length ? (
                 <Text style={[font.small, { color: colors.textMuted }]}>
                   {item.menuItem.dietaryTags.map((t) => DIETARY_LABELS[t as DietaryTag] ?? t).join(' · ')}
@@ -296,9 +291,9 @@ function FeedVideoBase(props: FeedVideoProps) {
               accessibilityLabel={item.orderable && orderingEnabled ? `Order ${item.menuItem.name} for ${price}` : undefined}
               disabled={!(item.orderable && orderingEnabled)}
               onPress={() => props.onOrder(item)}
-              style={({ pressed }) => [styles.orderBtn, !(item.orderable && orderingEnabled) && styles.orderBtnDisabled, pressed && { backgroundColor: colors.accentPressed }]}
+              style={({ pressed }) => [styles.orderBtn, !(item.orderable && orderingEnabled) && styles.orderBtnDisabled, !orderingEnabled && styles.soonChip, pressed && { backgroundColor: colors.accentPressed }]}
             >
-              <Text style={[font.heading, { color: colors.text }]}>
+              <Text style={[orderingEnabled ? font.heading : styles.soonText, { color: colors.text }]}>
                 {!orderingEnabled ? 'Ordering soon' : item.orderable ? 'Order now' : NOT_ORDERABLE_COPY[item.notOrderableReason ?? 'no_linked_item']}
               </Text>
             </Pressable>
@@ -315,9 +310,28 @@ function RailButton({ icon, label, a11yLabel, active, onPress }: {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={a11yLabel ?? label} accessibilityState={{ selected: !!active }}
       onPress={onPress} hitSlop={8} style={styles.railBtn}>
-      <Ionicons name={icon} size={30} color={active ? colors.accent : colors.text} />
-      <Text style={[font.label, styles.shadow, { color: colors.text }]}>{label}</Text>
+      <Ionicons name={icon} size={32} color={active ? colors.accent : colors.text} style={styles.iconShadow} />
+      <Text style={[styles.railLabel, styles.shadow]}>{label}</Text>
     </Pressable>
+  );
+}
+
+/** Smooth dark fade (stacked bands) so overlay text stays readable without hard edges. Works on web and native. */
+function Fade({ edge, height, maxOpacity }: { edge: 'top' | 'bottom'; height: number; maxOpacity: number }) {
+  if (Platform.OS === 'web') {
+    // Browsers: a real CSS gradient (perfectly smooth).
+    const dir = edge === 'top' ? 'to bottom' : 'to top';
+    const css = `linear-gradient(${dir}, rgba(0,0,0,${maxOpacity}) 0%, rgba(0,0,0,${maxOpacity * 0.45}) 45%, rgba(0,0,0,0) 100%)`;
+    return <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, height, [edge]: 0, backgroundImage: css } as object} />;
+  }
+  const bands = 32;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, height, [edge]: 0 }}>
+      {Array.from({ length: bands }, (_, i) => {
+        const t = edge === 'top' ? 1 - i / bands : (i + 1) / bands; // strongest at the screen edge
+        return <View key={i} style={{ flex: 1, backgroundColor: `rgba(0,0,0,${(maxOpacity * t * t).toFixed(3)})` }} />;
+      })}
+    </View>
   );
 }
 
@@ -325,8 +339,6 @@ export const FeedVideo = memo(FeedVideoBase);
 
 const styles = StyleSheet.create({
   placeholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
-  scrimTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 140, backgroundColor: 'rgba(0,0,0,0.25)' },
-  scrimBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 320, backgroundColor: 'rgba(0,0,0,0.35)' },
   hint: { position: 'absolute', top: 120, paddingHorizontal: space.lg, paddingVertical: space.sm, borderRadius: radius.md, borderWidth: 3 },
   hintRight: { left: space.xl, borderColor: colors.accent, transform: [{ rotateZ: '-12deg' }] },
   hintLeft: { right: space.xl, borderColor: colors.text, transform: [{ rotateZ: '12deg' }] },
@@ -335,14 +347,17 @@ const styles = StyleSheet.create({
   stamp: { paddingHorizontal: space.xl, paddingVertical: space.lg, borderRadius: radius.lg, alignItems: 'center', gap: 2 },
   stampCrave: { backgroundColor: colors.accent },
   stampPass: { backgroundColor: 'rgba(29,29,32,0.92)' },
-  rail: { position: 'absolute', right: space.sm, alignItems: 'center', gap: space.lg },
-  sound: { position: 'absolute', left: space.md, flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: HIT,
-    paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.45)' },
-  railBtn: { minWidth: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  info: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.lg, paddingRight: 84, gap: space.xs },
+  rail: { position: 'absolute', right: 6, alignItems: 'center', gap: space.md },
+  railBtn: { minWidth: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center', gap: 1 },
+  railLabel: { fontSize: 12, fontWeight: '700', color: colors.text },
+  iconShadow: { textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
+  info: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.md, paddingRight: 76, gap: 4 },
   shadow: { color: colors.text, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },
   sponsored: { alignSelf: 'flex-start', backgroundColor: colors.warning, paddingHorizontal: space.sm, paddingVertical: 2, borderRadius: radius.sm },
   orderRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.md, marginTop: space.sm, marginRight: -68 },
   orderBtn: { minHeight: 52, paddingHorizontal: space.xl, borderRadius: radius.pill, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   orderBtnDisabled: { backgroundColor: colors.surfaceRaised },
+  // Pilot (ordering off): a small quiet label instead of a big button.
+  soonChip: { minHeight: 30, paddingHorizontal: space.md, backgroundColor: 'rgba(255,255,255,0.18)' },
+  soonText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
 });

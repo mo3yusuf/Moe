@@ -3,7 +3,7 @@ import type { SwipeDirection } from '@crave/core';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, AppState, FlatList, Pressable, Share, StyleSheet, View,
+  AccessibilityInfo, ActivityIndicator, AppState, FlatList, Platform, Pressable, Share, StyleSheet, View,
   type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import { useFeed, type FeedEntry } from '@/features/feed/use-feed';
 import { api } from '@/lib/api';
 import { config } from '@/lib/config';
 import { colors, font, HIT, space } from '@/theme/tokens';
+import { setSoundOn, useSoundOn } from '@/features/feed/sound';
 
 const PRELOAD_AHEAD = 1;
 
@@ -27,8 +28,9 @@ export default function ForYou() {
   const listRef = useRef<FlatList<FeedEntry>>(null);
   const router = useRouter();
   const [mode, setMode] = useState<'for_you' | 'following'>('for_you');
-  const { items, loading, error, personalised, loadMore, refresh, patch } = useFeed(mode);
+  const { items, loading, error, loadMore, refresh, patch } = useFeed(mode);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const soundOn = useSoundOn();
 
   useEffect(() => {
     if (config.demoMode || !tabFocused) return;
@@ -176,21 +178,28 @@ export default function ForYou() {
         {config.demoMode ? <DemoBanner /> : null}
         <View style={styles.headerRow} pointerEvents="box-none">
           {(['following', 'for_you'] as const).map((m) => (
-            <Pressable key={m} accessibilityRole="tab" accessibilityState={{ selected: mode === m }} onPress={() => { setMode(m); setActiveIndex(0); }} hitSlop={8}>
-              <T variant="heading" style={[styles.headerTitle, { opacity: mode === m ? 1 : 0.55 }]}>{m === 'for_you' ? 'For You' : 'Following'}</T>
+            <Pressable key={m} accessibilityRole="tab" accessibilityState={{ selected: mode === m }} onPress={() => { setMode(m); setActiveIndex(0); }} hitSlop={8}
+              style={styles.tab}>
+              <T variant="heading" style={[styles.headerTitle, { opacity: mode === m ? 1 : 0.6 }]}>{m === 'for_you' ? 'For You' : 'Following'}</T>
+              <View style={[styles.tabUnderline, { opacity: mode === m ? 1 : 0 }]} />
             </Pressable>
           ))}
-          {personalised ? <T variant="label" style={styles.badge}>PERSONALISED</T> : null}
+          {/* Sound on/off where TikTok keeps its search icon. Browsers start videos muted. */}
+          <Pressable accessibilityRole="button" accessibilityLabel={soundOn ? 'Mute videos' : 'Turn sound on'} hitSlop={12}
+            onPress={() => setSoundOn(!soundOn)} style={styles.soundBtn}>
+            <Ionicons name={soundOn ? 'volume-high' : 'volume-mute'} size={24} color={colors.text} />
+          </Pressable>
         </View>
         {needsOnboarding ? (
           <Pressable accessibilityRole="button" onPress={() => router.push('/preferences')} style={styles.onboard}>
-            <T variant="small" style={{ fontWeight: '700' }}>New here? Tell us what you crave →</T>
+            <Ionicons name="sparkles" size={14} color={colors.text} />
+            <T variant="small" style={{ fontWeight: '700' }}>Tell us what you crave</T>
             <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" hitSlop={12} onPress={() => setNeedsOnboarding(false)}>
-              <Ionicons name="close" size={18} color={colors.text} />
+              <Ionicons name="close" size={16} color={colors.text} />
             </Pressable>
           </Pressable>
         ) : null}
-        {screenReader ? (
+        {screenReader && Platform.OS !== 'web' ? (
           <View style={styles.srNav}>
             <Pressable accessibilityRole="button" accessibilityLabel="Previous video" onPress={() => scrollTo(activeIndex - 1)} style={styles.srBtn}>
               <Ionicons name="chevron-up" size={24} color={colors.text} />
@@ -209,10 +218,12 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: { position: 'absolute', top: 0, left: 0, right: 0 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.lg, paddingVertical: space.sm },
-  headerTitle: { ...font.heading, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 },
-  badge: { color: colors.accent },
-  onboard: { marginHorizontal: space.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: space.lg, minHeight: HIT },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xl, paddingVertical: space.sm, minHeight: HIT },
+  tab: { alignItems: 'center', gap: 4 },
+  tabUnderline: { width: 28, height: 3, borderRadius: 2, backgroundColor: colors.text },
+  headerTitle: { ...font.heading, fontSize: 17, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },
+  soundBtn: { position: 'absolute', right: space.md, top: 0, bottom: 0, justifyContent: 'center' },
+  onboard: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: space.xs, backgroundColor: 'rgba(255,77,46,0.92)', borderRadius: 999, paddingHorizontal: space.md, paddingVertical: 6, marginTop: 2 },
   srNav: { position: 'absolute', right: space.sm, top: 80, gap: space.sm },
   srBtn: { width: HIT, height: HIT, borderRadius: HIT / 2, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center' },
 });
