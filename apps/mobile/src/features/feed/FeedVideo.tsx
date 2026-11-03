@@ -7,7 +7,7 @@ import { useEventListener } from 'expo';
 import * as Haptics from 'expo-haptics';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { memo, useEffect, useRef, useState, type ComponentProps } from 'react';
-import { Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Animated, {
@@ -59,6 +59,17 @@ function FeedVideoBase(props: FeedVideoProps) {
   });
   useEffect(() => { player.muted = !soundOn; }, [soundOn, player]);
   const [paused, setPaused] = useState(false);
+  // Fill the screen (like TikTok) only for tall videos; show wider ones whole with bars instead of
+  // cropping them into a "zoomed in" view. The thumbnail has the video's shape (Mux provides one).
+  const [videoAspect, setVideoAspect] = useState<number | null>(null);
+  useEffect(() => {
+    if (!item.thumbnailUrl) return;
+    let alive = true;
+    Image.getSize(item.thumbnailUrl, (w, h) => { if (alive && w && h) setVideoAspect(w / h); }, () => {});
+    return () => { alive = false; };
+  }, [item.thumbnailUrl]);
+  const screenAspect = width && height ? width / height : 9 / 19.5;
+  const fit = videoAspect != null && videoAspect <= screenAspect * 1.35 ? 'cover' : 'contain';
   const [stamp, setStamp] = useState<SwipeDirection | null>(null);
   const lastTime = useRef(0);
   const durationMs = item.durationMs ?? 0;
@@ -184,7 +195,7 @@ function FeedVideoBase(props: FeedVideoProps) {
           onAccessibilityAction={onA11yAction}
         >
           {shouldLoad ? (
-            <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} playsInline />
+            <VideoView player={player} style={StyleSheet.absoluteFill} contentFit={fit} nativeControls={false} playsInline />
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
               <Text style={[font.title, { color: colors.textFaint }]}>{item.menuItem?.name ?? 'CRAVE'}</Text>
