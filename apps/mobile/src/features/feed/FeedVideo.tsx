@@ -60,7 +60,8 @@ function FeedVideoBase(props: FeedVideoProps) {
   useEffect(() => { player.muted = !soundOn; }, [soundOn, player]);
   const [paused, setPaused] = useState(false);
   // Fill the screen (like TikTok) only for tall videos; show wider ones whole with bars instead of
-  // cropping them into a "zoomed in" view. The thumbnail has the video's shape (Mux provides one).
+  // cropping them into a "zoomed in" view. The thumbnail has the video's shape (Mux provides one);
+  // without one we assume vertical.
   const [videoAspect, setVideoAspect] = useState<number | null>(null);
   useEffect(() => {
     if (!item.thumbnailUrl) return;
@@ -69,7 +70,8 @@ function FeedVideoBase(props: FeedVideoProps) {
     return () => { alive = false; };
   }, [item.thumbnailUrl]);
   const screenAspect = width && height ? width / height : 9 / 19.5;
-  const fit = videoAspect != null && videoAspect <= screenAspect * 1.35 ? 'cover' : 'contain';
+  // Unknown shape (no thumbnail): assume a vertical phone video and fill, as almost all uploads are.
+  const fit = videoAspect == null || videoAspect <= screenAspect * 1.35 ? 'cover' : 'contain';
   const [stamp, setStamp] = useState<SwipeDirection | null>(null);
   const lastTime = useRef(0);
   const durationMs = item.durationMs ?? 0;
