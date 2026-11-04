@@ -1,7 +1,7 @@
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
-import { Button, Card, Field, Screen, T } from '@/components/ui';
+import { FlatList, RefreshControl, View } from 'react-native';
+import { Badge, Button, Card, Field, Notice, Screen, SkeletonList, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { colors, radius, space } from '@/theme/tokens';
 
@@ -27,8 +27,8 @@ export default function ReviewVideos() {
 
   return (
     <Screen padded={false} edges={[]}>
-      {error ? <T style={{ color: colors.danger, padding: space.lg }}>{error}</T> : null}
-      {!items && !error ? <ActivityIndicator style={{ marginTop: space.xl }} color={colors.accent} /> : null}
+      {error ? <Notice tone="danger" style={{ margin: space.lg }}>{error}</Notice> : null}
+      {!items && !error ? <View style={{ paddingHorizontal: space.lg }}><SkeletonList rows={3} /></View> : null}
       {items ? (
         <FlatList
           data={items}
@@ -71,10 +71,10 @@ function ReviewCard({ item, onDone }: { item: Pending; onDone(): void }) {
       <T variant="small" muted>
         {item.durationMs ? `${Math.round(item.durationMs / 1000)}s · ` : ''}{new Date(item.createdAt).toLocaleString('en-AU')}
       </T>
-      {item.isSponsored ? <T variant="small" style={{ color: colors.warning }}>Sponsored: {item.sponsorDisclosure}</T> : null}
-      {item.openReports ? <T variant="small" style={{ color: colors.danger }}>{item.openReports} open report(s)</T> : null}
+      {item.isSponsored ? <Badge tone="warning" label={`Sponsored: ${item.sponsorDisclosure ?? ''}`} /> : null}
+      {item.openReports ? <Badge tone="danger" label={`${item.openReports} open report(s)`} /> : null}
       {item.tags.map((t) => <T key={t.menuItemName} variant="small" muted>Tag: {t.menuItemName} @ {t.restaurantName} ({t.status})</T>)}
-      {error ? <T style={{ color: colors.danger }}>{error}</T> : null}
+      {error ? <Notice tone="danger">{error}</Notice> : null}
       <Button title={busy === 'publish' ? 'Publishing…' : 'Publish'} onPress={() => decide('publish')} disabled={!!busy || !!item.processing} />
       <View style={{ gap: space.sm }}>
         <Field label="Reason (sent to the uploader if rejected)" value={reason} onChangeText={setReason} maxLength={500} placeholder="e.g. Not food, or copyrighted music" />

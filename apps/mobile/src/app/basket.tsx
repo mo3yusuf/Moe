@@ -3,9 +3,9 @@ import { useStripe } from '@/lib/stripe';
 import * as Crypto from 'expo-crypto';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { Alert } from '@/lib/alert';
-import { Button, Card, Field, T } from '@/components/ui';
+import { Button, Card, Field, LoadingScreen, T } from '@/components/ui';
 import { AddressForm, type AddressValue } from '@/features/delivery/address-form';
 import { api } from '@/lib/api';
 import { config } from '@/lib/config';
@@ -85,7 +85,7 @@ export default function BasketScreen() {
     } finally { setBusy(false); }
   }
 
-  if (!data) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /></View>;
+  if (!data) return <LoadingScreen />;
   if (!data.basket) return <View style={{ flex: 1, backgroundColor: colors.bg, padding: space.lg, gap: space.md }}><T variant="heading">Your basket is empty</T><T muted>Tap “Order now” on a video or open a restaurant’s menu.</T></View>;
   const q = data.quote;
   const loc = data.location;

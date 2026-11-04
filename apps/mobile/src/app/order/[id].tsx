@@ -1,9 +1,9 @@
 import { formatMoney, ORDER_STATUS_LABELS, isTerminal, type OrderStatus } from '@crave/core';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, Linking, ScrollView, View } from 'react-native';
+import { AppState, Linking, ScrollView, View } from 'react-native';
 import { Alert } from '@/lib/alert';
-import { Button, Card, T } from '@/components/ui';
+import { Button, Card, LoadingScreen, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { colors, space } from '@/theme/tokens';
@@ -44,7 +44,7 @@ export default function OrderScreen() {
     ]);
   }
 
-  if (!order) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /></View>;
+  if (!order) return <LoadingScreen />;
   const reached = new Map(order.events.map((e) => [e.status, e]));
   const stopped = order.status === 'rejected' || order.status === 'cancelled';
 

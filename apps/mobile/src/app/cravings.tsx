@@ -1,7 +1,7 @@
 import { formatMoney } from '@crave/core';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, View } from 'react-native';
-import { Card, T } from '@/components/ui';
+import { FlatList, View } from 'react-native';
+import { Card, LoadingScreen, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { config } from '@/lib/config';
 import { colors, space } from '@/theme/tokens';
@@ -21,7 +21,7 @@ export default function Cravings() {
     api<{ items: Saved[] }>('/v1/saved?collection=cravings').then((r) => setItems(r.items)).catch((e) => setError(e.message));
   }, []);
 
-  if (!items && !error) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /></View>;
+  if (!items && !error) return <LoadingScreen />;
 
   return (
     <FlatList

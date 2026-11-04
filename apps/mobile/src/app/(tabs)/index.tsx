@@ -3,11 +3,11 @@ import type { SwipeDirection } from '@crave/core';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, AppState, FlatList, Platform, Pressable, Share, StyleSheet, View,
+  AccessibilityInfo, AppState, FlatList, Platform, Pressable, Share, StyleSheet, View,
   type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, DemoBanner, T } from '@/components/ui';
+import { Button, DemoBanner, SkeletonFeed, T } from '@/components/ui';
 import { track, watchSession } from '@/features/feed/events';
 import { FeedVideo, type InputMethod } from '@/features/feed/FeedVideo';
 import { useFeed, type FeedEntry } from '@/features/feed/use-feed';
@@ -167,17 +167,25 @@ export default function ForYou() {
           onEndReached={() => void loadMore()}
         />
       ) : (
-        <View style={styles.empty}>
-          {loading ? <ActivityIndicator color={colors.accent} size="large" /> : (
-            <View style={{ gap: space.md, alignItems: 'center', paddingHorizontal: space.xl }}>
-              <T variant="heading">{error ? 'Couldn’t load your feed' : mode === 'following' ? 'Nothing from accounts you follow yet' : 'No videos yet — be the first!'}</T>
-              {!error && mode === 'for_you' && !config.demoMode ? <Button title="Post a food video" onPress={() => router.push('/create')} /> : null}
-              {!error && mode === 'following' ? <T muted style={{ textAlign: 'center' }}>Follow restaurants and creators to see their latest videos here.</T> : null}
-              {error ? <T muted style={{ textAlign: 'center' }}>{error}</T> : null}
-              <Button title="Try again" onPress={() => void refresh()} />
+        loading ? <SkeletonFeed /> : (
+          <View style={styles.empty}>
+            {/* One clear message and one clear action (no clutter). */}
+            <View style={{ gap: space.md, alignItems: 'center', paddingHorizontal: space.xl, maxWidth: 360 }}>
+              <Ionicons name={error ? 'cloud-offline-outline' : mode === 'following' ? 'people-outline' : 'videocam-outline'} size={44} color={colors.textMuted} />
+              <T variant="title" style={{ textAlign: 'center' }}>
+                {error ? 'Couldn’t load your feed' : mode === 'following' ? 'Nothing here yet' : 'No videos yet'}
+              </T>
+              <T muted style={{ textAlign: 'center' }}>
+                {error ? 'Check your connection and try again.'
+                  : mode === 'following' ? 'Follow restaurants and creators to see their latest videos here.'
+                  : 'Be the first to share a meal you loved.'}
+              </T>
+              {error ? <Button title="Try again" onPress={() => void refresh()} style={{ alignSelf: 'stretch' }} />
+                : mode === 'for_you' && !config.demoMode ? <Button title="Post a food video" onPress={() => router.push('/create')} style={{ alignSelf: 'stretch' }} />
+                : null}
             </View>
-          )}
-        </View>
+          </View>
+        )
       )}
 
       {/* Header overlay */}

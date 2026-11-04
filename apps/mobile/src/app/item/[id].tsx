@@ -2,9 +2,9 @@ import { ALLERGEN_LABELS, DIETARY_LABELS, formatMoney, validateSelection, type A
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { Alert } from '@/lib/alert';
-import { Button, Card, Field, T } from '@/components/ui';
+import { Button, Card, Field, LoadingScreen, Notice, T } from '@/components/ui';
 import { track } from '@/features/feed/events';
 import { api, ApiRequestError } from '@/lib/api';
 import { config } from '@/lib/config';
@@ -61,7 +61,7 @@ export default function ItemScreen() {
     } finally { setBusy(false); }
   }
 
-  if (!item) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' }}>{error ? <T muted>{error}</T> : <ActivityIndicator color={colors.accent} />}</View>;
+  if (!item) return (error ? <View style={{ flex: 1, backgroundColor: colors.bg, padding: space.lg }}><Notice tone="danger">{error}</Notice></View> : <LoadingScreen />);
 
   return (
     <>

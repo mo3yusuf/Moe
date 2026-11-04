@@ -3,8 +3,8 @@ import { titleCase } from '@crave/core';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, TextInput, View } from 'react-native';
-import { Card, DemoBanner, Screen, T } from '@/components/ui';
+import { FlatList, Pressable, TextInput, View } from 'react-native';
+import { Card, DemoBanner, Screen, SkeletonList, T } from '@/components/ui';
 import { getCoarseLocation, type Coarse } from '@/features/feed/location';
 import { api } from '@/lib/api';
 import { config } from '@/lib/config';
@@ -45,7 +45,7 @@ export default function Discover() {
   }
 
   if (config.demoMode) {
-    return <Screen padded={false}><DemoBanner /><View style={{ padding: space.lg, gap: space.sm }}><T variant="title">Discover</T><T muted>Restaurant search needs a CRAVE backend — not available in demo mode.</T></View></Screen>;
+    return <Screen padded={false}><DemoBanner /><View style={{ padding: space.lg, gap: space.sm }}><T variant="title">Search</T><T muted>Restaurant search needs a CRAVE backend — not available in demo mode.</T></View></Screen>;
   }
 
   return (
@@ -64,7 +64,7 @@ export default function Discover() {
         </Pressable>
       </View>
       {error ? <T style={{ color: colors.danger, marginTop: space.md }}>{error}</T> : null}
-      {!items ? <ActivityIndicator style={{ marginTop: space.xl }} color={colors.accent} /> : (
+      {!items ? <SkeletonList rows={5} /> : (
         <FlatList
           data={items}
           keyExtractor={(r) => r.id}

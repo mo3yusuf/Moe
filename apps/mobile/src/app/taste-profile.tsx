@@ -1,8 +1,8 @@
 import { titleCase } from '@crave/core';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
-import { Button, Card, T } from '@/components/ui';
+import { ScrollView, View } from 'react-native';
+import { Button, Card, LoadingScreen, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { config } from '@/lib/config';
 import { colors, space } from '@/theme/tokens';
@@ -34,7 +34,7 @@ export default function TasteProfileScreen() {
     api<Taste>('/v1/taste-profile').then(setTaste).catch((e) => setError(e.message));
   }, []);
 
-  if (!taste && !error) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /></View>;
+  if (!taste && !error) return <LoadingScreen />;
   const fmt = (x: { type: string; value: string }) => `${titleCase(x.value)} · ${TYPE[x.type] ?? x.type}`;
 
   return (
