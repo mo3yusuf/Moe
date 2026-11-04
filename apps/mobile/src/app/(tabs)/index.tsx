@@ -65,12 +65,19 @@ export default function ForYou() {
     const meta = { menuItemId: item.menuItem?.id ?? null, feedRequestId: item.feedRequestId };
     track(watchSession.swipe(item.videoId, direction, method, meta));
     patch(item.videoId, { craved: direction === 'right' });
+    // CRAVE IT = order it: when the dish can be ordered, a right swipe goes straight to its order
+    // screen (the customer still confirms there, so a swipe never charges anyone by itself).
+    if (direction === 'right' && !config.demoMode && config.orderingEnabled && item.menuItem && item.orderable) {
+      track({ kind: 'interaction', eventType: 'order_click', videoId: item.videoId, menuItemId: item.menuItem.id, feedRequestId: item.feedRequestId });
+      const menuItemId = item.menuItem.id;
+      setTimeout(() => router.push({ pathname: '/item/[id]', params: { id: menuItemId, video: item.videoId } }), 650);
+    }
     if (direction === 'left') {
       // Not for me: move on so the user isn't left looking at it.
       const index = items.findIndex((i) => i.videoId === item.videoId);
       setTimeout(() => scrollTo(index + 1), 450);
     }
-  }, [items, patch, scrollTo]);
+  }, [items, patch, scrollTo, router]);
 
   const onToggleLike = useCallback((item: FeedEntry) => {
     const liked = !item.viewer.liked;
