@@ -1,10 +1,10 @@
 import { ALLERGEN_LABELS, ALLERGENS, CUISINES, DIETARY_LABELS, DIETARY_TAGS, formatMoney, titleCase, type DietaryTag } from '@crave/core';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { Alert } from '@/lib/alert';
 import { Chip, ChipRow } from '@/components/chips';
-import { Button, Card, T } from '@/components/ui';
+import { Button, Card, LoadingScreen, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { config } from '@/lib/config';
 import { colors, space } from '@/theme/tokens';
@@ -28,7 +28,7 @@ export default function PreferencesScreen() {
     api<Prefs>('/v1/preferences').then(setPrefs).catch(() => setPrefs(EMPTY));
   }, []);
 
-  if (!prefs) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /></View>;
+  if (!prefs) return <LoadingScreen />;
 
   const toggle = <K extends 'favouriteCuisines' | 'dislikedCuisines' | 'dietaryRequirements' | 'avoidAllergens'>(key: K, value: string) => {
     setPrefs((p) => {

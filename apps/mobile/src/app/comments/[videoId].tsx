@@ -1,9 +1,9 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { Alert } from '@/lib/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, T } from '@/components/ui';
+import { Button, SkeletonList, T } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth';
 import { colors, radius, space } from '@/theme/tokens';
@@ -67,7 +67,7 @@ export default function Comments() {
     ]);
   }
 
-  if (!items) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /></View>;
+  if (!items) return <View style={{ flex: 1, backgroundColor: colors.bg, paddingHorizontal: space.lg }}><SkeletonList rows={6} avatar /></View>;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>

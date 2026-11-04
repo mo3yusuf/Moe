@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
-import { Button, Field, Screen, T } from '@/components/ui';
+import { Button, Field, Notice, Screen, T } from '@/components/ui';
 import { useAuth } from '@/providers/auth';
 import { colors, space } from '@/theme/tokens';
 
@@ -30,7 +30,7 @@ export default function SignIn() {
         <T variant="title" accessibilityRole="header">Welcome back</T>
         <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
         <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={submit} />
-        {error ? <T style={{ color: colors.danger }} accessibilityLiveRegion="polite">{error}</T> : null}
+        {error ? <Notice tone="danger">{error}</Notice> : null}
         <Button title="Sign in" onPress={submit} loading={busy} disabled={!email || !password} />
         <View style={{ alignItems: 'center' }}>
           <Link href="/sign-up"><T muted>New to CRAVE? <T style={{ color: colors.accent }}>Create an account</T></T></Link>

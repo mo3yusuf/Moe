@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
-import { Button, Card, Field, MissingHint, Screen, T, ToggleRow } from '@/components/ui';
+import { Button, Card, Field, MissingHint, Notice, Screen, T, ToggleRow } from '@/components/ui';
 import { useAuth } from '@/providers/auth';
 import { colors, space } from '@/theme/tokens';
 
@@ -78,7 +78,7 @@ export default function SignUp() {
           <ToggleRow label="I am 16 or older" value={ageOk} onValueChange={setAgeOk} />
           <ToggleRow label="I agree to the Terms and Privacy Policy" description="Draft documents — pending legal review before launch." value={policyOk} onValueChange={setPolicyOk} />
 
-          {error ? <T style={{ color: colors.danger }} accessibilityLiveRegion="polite">{error}</T> : null}
+          {error ? <Notice tone="danger">{error}</Notice> : null}
           <MissingHint items={missing} />
           <Button title="Create account" onPress={submit} loading={busy} disabled={!valid} />
           <View style={{ alignItems: 'center' }}>

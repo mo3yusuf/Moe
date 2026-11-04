@@ -40,7 +40,7 @@ export interface RankingConfig {
 export const DEFAULT_RANKING_CONFIG: RankingConfig = {
   modelVersion: 'rules-v2-cf',
   signals: {
-    rightSwipe: 3, leftSwipe: -2, order: 5, repeatOrder: 7, save: 1.5, like: 1,
+    rightSwipe: 3, leftSwipe: -2, order: 5, repeatOrder: 7, save: 1.5, like: 2, // like = "I love this"
     menuItemClick: 1.5, orderClick: 2, addToBasket: 2.5, longWatch: 0.5, replay: 0.8, quickSkip: -0.3,
   },
   featureTypes: { restaurant: 1, category: 0.8, cuisine: 0.7, tag: 0.35, price: 0.3, creator: 0.5, cert: 0.5 },

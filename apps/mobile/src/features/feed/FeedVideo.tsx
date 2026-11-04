@@ -51,6 +51,7 @@ function FeedVideoBase(props: FeedVideoProps) {
   const { item, width, height, isActive, preload, focused, bottomInset, orderingEnabled } = props;
   const shouldLoad = isActive || preload;
   const soundOn = useSoundOn();
+  const canOrder = orderingEnabled && !!item.menuItem && item.orderable;
   const player = useVideoPlayer(shouldLoad ? { uri: item.playbackUrl, useCaching: true } : null, (p) => {
     p.loop = true;
     p.muted = !soundOn; // browsers block autoplay with sound
@@ -221,9 +222,9 @@ function FeedVideoBase(props: FeedVideoProps) {
       {stamp ? (
         <View style={styles.center} pointerEvents="none" accessibilityLiveRegion="polite">
           <View style={[styles.stamp, stamp === 'right' ? styles.stampCrave : styles.stampPass]}>
-            <Text style={[font.title, { color: colors.text }]}>{stamp === 'right' ? 'Craved!' : 'Not for me'}</Text>
+            <Text style={[font.title, { color: colors.text }]}>{stamp === 'right' ? (canOrder ? 'Let’s order it!' : 'Craved!') : 'Not for me'}</Text>
             <Text style={[font.small, { color: colors.text }]}>
-              {stamp === 'right' ? 'Saved to your Cravings' : 'We’ll show fewer like this'}
+              {stamp === 'right' ? (canOrder ? 'Opening your order…' : 'Saved to your Cravings — order it when it’s available') : 'We’ll show fewer like this'}
             </Text>
           </View>
         </View>

@@ -3,8 +3,8 @@ import { DIETARY_LABELS, formatMoney, titleCase, type DietaryTag } from '@crave/
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SectionList, View } from 'react-native';
-import { Button, T } from '@/components/ui';
+import { Pressable, SectionList, View } from 'react-native';
+import { Button, LoadingScreen, Notice, T } from '@/components/ui';
 import { api } from '@/lib/api';
 import { colors, radius, space } from '@/theme/tokens';
 
@@ -37,7 +37,7 @@ export default function RestaurantScreen() {
     catch { setData({ ...data, following: !follow }); }
   }
 
-  if (!data) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' }}>{error ? <T muted>{error}</T> : <ActivityIndicator color={colors.accent} />}</View>;
+  if (!data) return (error ? <View style={{ flex: 1, backgroundColor: colors.bg, padding: space.lg }}><Notice tone="danger">{error}</Notice></View> : <LoadingScreen />);
   const r = data.restaurant;
   const today = new Date().getDay();
   const todayHours = r.hours.filter((h) => h.dayOfWeek === today).map((h) => `${h.opensAt}–${h.closesAt}`).join(', ') || 'Closed today';

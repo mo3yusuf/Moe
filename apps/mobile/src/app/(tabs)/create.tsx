@@ -4,7 +4,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { Alert } from '@/lib/alert';
-import { Button, Card, DemoBanner, Field, ListRow, MissingHint, Screen, T, ToggleRow } from '@/components/ui';
+import { Button, Card, DemoBanner, Field, ListRow, MissingHint, Notice, Screen, T, ToggleRow } from '@/components/ui';
 import { TagPicker, type TagChoice } from '@/features/upload/tag-picker';
 import { MAX_DURATION_MS, missingForUpload, uploadVideo, validateUpload } from '@/features/upload/upload';
 import { config } from '@/lib/config';
@@ -88,7 +88,7 @@ export default function Create() {
           <T variant="title" accessibilityRole="header">Share a food video</T>
           {!picked ? (
             <Card>
-              <T muted>Film a meal you loved at a Brisbane restaurant (up to 3 minutes). Only upload videos you made yourself — don’t copy TikTok or Instagram posts. Mention the restaurant and suburb in your caption.</T>
+              <T muted>Film a meal you loved — hold your phone upright. Only post videos you made yourself.</T>
               <Button title="Record a video" onPress={() => pick(true)} />
               <Button title="Choose from library" variant="secondary" onPress={() => pick(false)} />
             </Card>
@@ -112,14 +112,14 @@ export default function Create() {
                 <ToggleRow label="I own this video" description="I filmed it or have permission, including for any music and any people who can be identified." value={rights} onValueChange={setRights} />
               </Card>
               <MissingHint items={missing} />
-              {error ? <T style={{ color: colors.danger }} accessibilityLiveRegion="polite">{error}</T> : null}
+              {error ? <Notice tone="danger">{error}</Notice> : null}
               <Button title={progress != null ? (progress > 0.02 && progress < 1 ? `Uploading ${Math.round(progress * 100)}%` : 'Uploading…') : 'Upload for review'}
                 onPress={submit} disabled={missing.length > 0 || progress != null} />
               {progress != null ? <T variant="small" muted style={{ textAlign: 'center' }}>Keep this screen open until it finishes.</T> : null}
             </>
           ) : null}
           <Card style={{ padding: 0 }}>
-            <ListRow title="My videos" subtitle="Review status, views and engagement" onPress={() => router.push('/my-videos')} />
+            <ListRow icon="film-outline" title="My videos" subtitle="Review status, views and engagement" onPress={() => router.push('/my-videos')} />
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>
