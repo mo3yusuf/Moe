@@ -4,7 +4,7 @@ import {
   type DietaryTag, type SwipeDirection,
 } from '@crave/core';
 import { useEventListener } from 'expo';
-import * as Haptics from 'expo-haptics';
+import { haptic } from '@/lib/haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { memo, useEffect, useRef, useState, type ComponentProps } from 'react';
@@ -115,7 +115,7 @@ function FeedVideoBase(props: FeedVideoProps) {
     tx.value = method === 'gesture'
       ? withTiming(0, { duration: 220 })
       : withSequence(withTiming(sign * 48, { duration: 110 }), withTiming(0, { duration: 180 }));
-    void Haptics.impactAsync(direction === 'right' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    haptic(direction === 'right' ? 'medium' : 'light');
     setStamp(direction);
     setTimeout(() => setStamp(null), STAMP_MS);
     props.onSwipe(item, direction, method);
@@ -126,7 +126,7 @@ function FeedVideoBase(props: FeedVideoProps) {
   const likeFromDoubleTap = (x: number, y: number) => {
     // Double tap only ever likes (it never un-likes), matching TikTok.
     if (!item.viewer.liked) props.onToggleLike(item);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptic('success');
     const id = ++heartSeq.current;
     setHearts((h) => [...h.slice(-4), { id, x, y }]);
     setTimeout(() => setHearts((h) => h.filter((k) => k.id !== id)), 900);
@@ -273,10 +273,10 @@ function FeedVideoBase(props: FeedVideoProps) {
         <RailButton icon={item.viewer.craved ? 'flame' : 'flame-outline'} label="Crave" active={item.viewer.craved}
           a11yLabel="Crave it" onPress={() => commit('right', 'button')} />
         <RailButton icon={item.viewer.liked ? 'heart' : 'heart-outline'} label={String(item.stats.likes + (item.viewer.liked ? 1 : 0))}
-          a11yLabel={item.viewer.liked ? 'Unlike' : 'Like'} active={item.viewer.liked} onPress={() => props.onToggleLike(item)} />
+          a11yLabel={item.viewer.liked ? 'Unlike' : 'Like'} active={item.viewer.liked} onPress={() => { haptic(item.viewer.liked ? 'light' : 'success'); props.onToggleLike(item); }} />
         <RailButton icon="chatbubble-ellipses" label={String(item.stats.comments)} a11yLabel={`Comments (${item.stats.comments})`} onPress={() => props.onComments(item)} />
         <RailButton icon={item.viewer.saved ? 'bookmark' : 'bookmark-outline'} label="Save" active={item.viewer.saved}
-          onPress={() => props.onToggleSave(item)} />
+          onPress={() => { haptic('light'); props.onToggleSave(item); }} />
         <RailButton icon="arrow-redo" label="Share" onPress={() => props.onShare(item)} />
         <RailButton icon="ellipsis-horizontal" label="More" a11yLabel="More options" onPress={() => Alert.alert('More', undefined, [
           { text: 'Not for me', onPress: () => commit('left', 'button') },
