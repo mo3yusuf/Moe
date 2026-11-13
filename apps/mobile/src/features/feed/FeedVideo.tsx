@@ -9,7 +9,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { memo, useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
-import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
+import { GestureDetector, useCompetingGestures, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Animated, {
   Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming,
 } from 'react-native-reanimated';
@@ -121,6 +121,17 @@ function FeedVideoBase(props: FeedVideoProps) {
     props.onSwipe(item, direction, method);
   };
 
+  const [hearts, setHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const heartSeq = useRef(0);
+  const likeFromDoubleTap = (x: number, y: number) => {
+    // Double tap only ever likes (it never un-likes), matching TikTok.
+    if (!item.viewer.liked) props.onToggleLike(item);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const id = ++heartSeq.current;
+    setHearts((h) => [...h.slice(-4), { id, x, y }]);
+    setTimeout(() => setHearts((h) => h.filter((k) => k.id !== id)), 900);
+  };
+
   const pan = usePanGesture({
     // Web: the handler writes this onto the card as CSS touch-action (its default 'none' blocks scrolling).
     // @ts-expect-error not in the public config type, but honoured by the web handler
@@ -136,6 +147,18 @@ function FeedVideoBase(props: FeedVideoProps) {
       scheduleOnRN(release, e.translationX, e.translationY, e.velocityX);
     },
   });
+  // Double tap = like (with a heart where you tapped); single tap = pause/play. The single tap only
+  // fires once a double tap has been ruled out, like TikTok.
+  const doubleTap = useTapGesture({
+    // @ts-expect-error see above
+    touchAction: 'pan-y',
+    numberOfTaps: 2,
+    maxDelay: 280,
+    onDeactivate: (e) => {
+      'worklet';
+      if (!e.canceled) scheduleOnRN(likeFromDoubleTap, e.x, e.y);
+    },
+  });
   const tap = useTapGesture({
     // @ts-expect-error see above
     touchAction: 'pan-y',
@@ -145,7 +168,8 @@ function FeedVideoBase(props: FeedVideoProps) {
       if (!e.canceled) scheduleOnRN(setPaused, (p: boolean) => !p);
     },
   });
-  const gesture = useCompetingGestures(pan, tap);
+  const taps = useExclusiveGestures(doubleTap, tap);
+  const gesture = useCompetingGestures(pan, taps);
 
   const cardStyle = useAnimatedStyle(() => ({
     transform: [
@@ -242,6 +266,8 @@ function FeedVideoBase(props: FeedVideoProps) {
         </View>
       ) : null}
 
+      {hearts.map((h) => <HeartBurst key={h.id} x={h.x} y={h.y} />)}
+
       {/* Action rail (TikTok-style) — outside the gesture detector so swipes never steal button taps. */}
       <View style={[styles.rail, { bottom: bottomInset + (item.menuItem ? 150 : 96) }]}>
         <RailButton icon={item.viewer.craved ? 'flame' : 'flame-outline'} label="Crave" active={item.viewer.craved}
@@ -326,6 +352,26 @@ function RailButton({ icon, label, a11yLabel, active, onPress }: {
       <Ionicons name={icon} size={32} color={active ? colors.accent : colors.text} style={styles.iconShadow} />
       <Text style={[styles.railLabel, styles.shadow]}>{label}</Text>
     </Pressable>
+  );
+}
+
+/** Big heart that pops and floats up where the video was double-tapped. */
+function HeartBurst({ x, y }: { x: number; y: number }) {
+  const t = useSharedValue(0);
+  const tilt = useRef((Math.random() - 0.5) * 30).current;
+  useEffect(() => { t.value = withTiming(1, { duration: 850 }); }, [t]);
+  const style = useAnimatedStyle(() => ({
+    opacity: interpolate(t.value, [0, 0.15, 0.7, 1], [0, 1, 1, 0]),
+    transform: [
+      { translateY: interpolate(t.value, [0, 1], [0, -90]) },
+      { scale: interpolate(t.value, [0, 0.15, 0.3, 1], [0.4, 1.25, 1, 1.1]) },
+      { rotateZ: `${tilt}deg` },
+    ],
+  }));
+  return (
+    <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: x - 48, top: y - 48 }, style]}>
+      <Ionicons name="heart" size={96} color="#FF2D55" style={{ textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 12 }} />
+    </Animated.View>
   );
 }
 
