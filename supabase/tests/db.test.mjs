@@ -1106,3 +1106,22 @@ test('crave match: join by code, everyone craves the same video → match; outsi
   await as(c, outsider);
   assert.equal((await expectDenied(c, 'select public.join_crave_room($1)', [room.code])).error?.code, 'P0001');
 }));
+
+test('menu customisation: nested groups stay within the dish; combo links stay within the restaurant', () => tx(async (c) => {
+  await asSuperuser(c);
+  const item = (await c.query(`select id, restaurant_id from public.menu_items where id = ${id('i-smash-classic')}`)).rows[0];
+  const g1 = (await c.query(`insert into public.menu_item_option_groups (menu_item_id, name, min_select, max_select) values ($1, 'Side', 1, 1) returning id`, [item.id])).rows[0].id;
+  const fries = (await c.query(`insert into public.menu_item_options (group_id, name, max_quantity) values ($1, 'Fries', 1) returning id`, [g1])).rows[0].id;
+  // Nested group under Fries on the same dish: fine.
+  await c.query(`insert into public.menu_item_option_groups (menu_item_id, name, min_select, max_select, parent_option_id, display_style) values ($1, 'Fries sauce', 1, 1, $2, 'chips')`, [item.id, fries]);
+  // Nested group on another dish pointing at this dish's option: refused.
+  const other = (await c.query(`select id from public.menu_items where id <> $1 limit 1`, [item.id])).rows[0].id;
+  assert.equal((await expectDenied(c, `insert into public.menu_item_option_groups (menu_item_id, name, parent_option_id) values ($1, 'x', $2)`, [other, fries])).error?.code, '22023');
+  // Combo link to a dish in the same restaurant: fine; to another restaurant's dish: refused.
+  const same = (await c.query(`select id from public.menu_items where restaurant_id = $1 and id <> $2 limit 1`, [item.restaurant_id, item.id])).rows[0]?.id;
+  if (same) await c.query(`insert into public.menu_item_options (group_id, name, linked_menu_item_id) values ($1, 'Linked', $2)`, [g1, same]);
+  const foreign = (await c.query(`select id from public.menu_items where restaurant_id <> $1 limit 1`, [item.restaurant_id])).rows[0]?.id;
+  if (foreign) assert.equal((await expectDenied(c, `insert into public.menu_item_options (group_id, name, linked_menu_item_id) values ($1, 'Bad', $2)`, [g1, foreign])).error?.code, '22023');
+  // Quantity limits are bounded.
+  assert.ok((await expectDenied(c, `insert into public.menu_item_options (group_id, name, max_quantity) values ($1, 'Too many', 50)`, [g1])).error);
+}));

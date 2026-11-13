@@ -1,4 +1,4 @@
-import { AU_STATES, checkDeliveryEligibility, isValidAuPhone, quoteBasket, validateSelection, type DeliveryAddress, type Quote } from '@crave/core';
+import { AU_STATES, checkDeliveryEligibility, describeSelection, isValidAuPhone, quoteBasket, unitPriceCents, validateSelection, type DeliveryAddress, type Quote } from '@crave/core';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppEnv } from '../app';
@@ -53,11 +53,11 @@ async function priceBasket(store: DataStore, basket: BasketRow, deliveryFeeCents
     restaurantName = def.restaurantName;
     commission = def.commissionRateBps;
     const errors = validateSelection(def, i.optionIds);
-    const chosen = def.optionGroups.flatMap((g) => g.options).filter((o) => i.optionIds.includes(o.id));
+    const chosen = describeSelection(def, i.optionIds);
     if (!errors.length) valid.push({ item: def, optionIds: i.optionIds, quantity: i.quantity, notes: i.notes, sourceVideoId: i.sourceVideoId });
     return {
       id: i.id, menuItemId: i.menuItemId, name: def.name, quantity: i.quantity, notes: i.notes, options: chosen.map((o) => o.name),
-      unitPriceCents: def.priceCents + chosen.reduce((a, o) => a + o.priceDeltaCents, 0), issue: errors[0]?.message ?? null,
+      unitPriceCents: unitPriceCents(def, i.optionIds), issue: errors[0]?.message ?? null,
     };
   });
   let quote: Quote | null = null;

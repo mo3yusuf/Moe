@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { EMPTY_PREFERENCES, parseServiceFeeConfig, type DietaryTag, type ExplicitPreferences, type FeedCandidate, type Signal } from '@crave/core';
+import { EMPTY_PREFERENCES, parseServiceFeeConfig, type DietaryTag, type ExplicitPreferences, type FeedCandidate, type OptionGroupDef, type Signal } from '@crave/core';
 import type { BasketRow, DataStore, MeResult, OrderView } from './store';
 
 /** Maps a public.feed_candidates() row to the shared camelCase shape. */
@@ -34,6 +34,24 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
     const { data, error } = await admin.rpc(fn, args);
     if (error) throw new Error(`${fn}: ${error.message}`);
     return data;
+  };
+  /** Option groups in display order, with nested/combo/quantity fields. Combo choices are sold out when their linked dish is. */
+  const mapOptionGroups = async (groups: any[]): Promise<OptionGroupDef[]> => {
+    const linkedIds = [...new Set(groups.flatMap((g) => (g.menu_item_options ?? []).map((o: any) => o.linked_menu_item_id)).filter(Boolean))] as string[];
+    const linkedAvailable = new Map<string, boolean>();
+    if (linkedIds.length) {
+      const { data } = await admin.from('menu_items').select('id, is_available').in('id', linkedIds);
+      for (const r of data ?? []) linkedAvailable.set(r.id, r.is_available);
+    }
+    return [...groups].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map((g) => ({
+      id: g.id, name: g.name, minSelect: g.min_select, maxSelect: g.max_select,
+      parentOptionId: g.parent_option_id ?? null, displayStyle: g.display_style ?? 'list',
+      options: [...(g.menu_item_options ?? [])].sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map((o: any) => ({
+        id: o.id, name: o.name, priceDeltaCents: o.price_delta_cents,
+        isAvailable: o.is_available && (o.linked_menu_item_id ? linkedAvailable.get(o.linked_menu_item_id) !== false : true),
+        maxQuantity: o.max_quantity ?? 1, imageUrl: o.image_url ?? null, linkedMenuItemId: o.linked_menu_item_id ?? null,
+      })),
+    }));
   };
   const store: DataStore = {
     async getMe(userId) {
@@ -277,7 +295,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
 
     async menuItemDetail(menuItemId) {
       const { data: m, error } = await admin.from('menu_items')
-        .select('id, restaurant_id, name, description, price_cents, currency, image_url, dietary_tags, allergens, spice_level, is_available, restaurants(name, status, restaurant_locations(id)), menu_item_option_groups(id, name, min_select, max_select, sort_order, menu_item_options(id, name, price_delta_cents, is_available, sort_order))')
+        .select('id, restaurant_id, name, description, price_cents, currency, image_url, dietary_tags, allergens, spice_level, is_available, restaurants(name, status, restaurant_locations(id)), is_combo, menu_item_option_groups(id, name, min_select, max_select, sort_order, parent_option_id, display_style, menu_item_options(id, name, price_delta_cents, is_available, sort_order, max_quantity, image_url, linked_menu_item_id))')
         .eq('id', menuItemId).maybeSingle();
       if (error) throw new Error(`menu item: ${error.message}`);
       const rest: any = (m as any)?.restaurants;
@@ -287,12 +305,8 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       return {
         id: m.id, restaurantId: m.restaurant_id, restaurantName: rest.name, locationId, name: m.name, description: m.description,
         priceCents: m.price_cents, currency: m.currency, imageUrl: m.image_url, dietaryTags: m.dietary_tags ?? [], allergens: m.allergens ?? [],
-        spiceLevel: m.spice_level, isAvailable: m.is_available, orderable,
-        optionGroups: ((m as any).menu_item_option_groups ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order).map((g: any) => ({
-          id: g.id, name: g.name, minSelect: g.min_select, maxSelect: g.max_select,
-          options: (g.menu_item_options ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order)
-            .map((o: any) => ({ id: o.id, name: o.name, priceDeltaCents: o.price_delta_cents, isAvailable: o.is_available })),
-        })),
+        spiceLevel: m.spice_level, isAvailable: m.is_available, orderable, isCombo: !!(m as any).is_combo,
+        optionGroups: await mapOptionGroups((m as any).menu_item_option_groups ?? []),
       };
     },
 
@@ -387,7 +401,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       const out = new Map();
       if (!ids.length) return out;
       const { data, error } = await admin.from('menu_items')
-        .select('id, name, price_cents, is_available, gst_applicable, restaurant_id, restaurants(name, status, commission_rate_bps, accepts_advance_orders, restaurant_locations(id)), menu_item_option_groups(id, name, min_select, max_select, menu_item_options(id, name, price_delta_cents, is_available))')
+        .select('id, name, price_cents, is_available, gst_applicable, is_combo, restaurant_id, restaurants(name, status, commission_rate_bps, accepts_advance_orders, restaurant_locations(id)), menu_item_option_groups(id, name, min_select, max_select, sort_order, parent_option_id, display_style, menu_item_options(id, name, price_delta_cents, is_available, sort_order, max_quantity, image_url, linked_menu_item_id))')
         .in('id', ids);
       if (error) throw new Error(`items: ${error.message}`);
       for (const m of (data ?? []) as any[]) {
@@ -396,10 +410,8 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
           id: m.id, name: m.name, priceCents: m.price_cents, isAvailable: m.is_available, gstApplicable: m.gst_applicable,
           restaurantId: m.restaurant_id, restaurantName: m.restaurants.name, commissionRateBps: m.restaurants.commission_rate_bps,
           acceptsAdvanceOrders: m.restaurants.accepts_advance_orders, locationId: m.restaurants.restaurant_locations?.[0]?.id ?? null,
-          optionGroups: (m.menu_item_option_groups ?? []).map((g: any) => ({
-            id: g.id, name: g.name, minSelect: g.min_select, maxSelect: g.max_select,
-            options: (g.menu_item_options ?? []).map((o: any) => ({ id: o.id, name: o.name, priceDeltaCents: o.price_delta_cents, isAvailable: o.is_available })),
-          })),
+          isCombo: !!m.is_combo,
+          optionGroups: await mapOptionGroups(m.menu_item_option_groups ?? []),
         });
       }
       return out;

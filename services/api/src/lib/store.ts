@@ -2,7 +2,7 @@
  * Data-access contract used by route handlers. The production implementation talks to Supabase
  * (see supabase-store.ts); tests use in-memory fakes. Route handlers never build SQL.
  */
-import type { ExplicitPreferences, FeedCandidate, ItemDef, Quote, ServiceFeeConfig, Signal } from '@crave/core';
+import type { ExplicitPreferences, FeedCandidate, ItemDef, OptionGroupDef, Quote, ServiceFeeConfig, Signal } from '@crave/core';
 import type { EventWritePlan } from './events';
 
 export interface MeResult {
@@ -89,8 +89,8 @@ export interface RestaurantDetail {
 export interface MenuItemDetail {
   id: string; restaurantId: string; restaurantName: string; locationId: string | null; name: string; description: string | null;
   priceCents: number; currency: string; imageUrl: string | null; dietaryTags: string[]; allergens: string[]; spiceLevel: number | null;
-  isAvailable: boolean; orderable: boolean;
-  optionGroups: { id: string; name: string; minSelect: number; maxSelect: number; options: { id: string; name: string; priceDeltaCents: number; isAvailable: boolean }[] }[];
+  isAvailable: boolean; orderable: boolean; isCombo?: boolean;
+  optionGroups: OptionGroupDef[];
 }
 
 export interface ModerationVideo {
