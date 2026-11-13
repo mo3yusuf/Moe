@@ -4,7 +4,7 @@ import type { FormState } from './actions';
 
 export interface ItemDefaults {
   name?: string; description?: string | null; section?: string; price?: string; cuisine?: string | null; category?: string | null;
-  tags?: string[]; dietary?: string[]; allergens?: string[]; spice?: number | null; gstFree?: boolean;
+  tags?: string[]; dietary?: string[]; allergens?: string[]; spice?: number | null; gstFree?: boolean; isCombo?: boolean;
 }
 
 export function ItemForm({ action, defaults = {}, cuisines, dietary, allergens, submitLabel }: {
@@ -44,6 +44,9 @@ export function ItemForm({ action, defaults = {}, cuisines, dietary, allergens, 
           </label>
         ))}</div>
       </fieldset>
+      <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <input type="checkbox" name="isCombo" defaultChecked={defaults.isCombo} style={{ width: 18, minHeight: 18 }} /> This is a meal deal (combo) — add its choices below as customisations
+      </label>
       <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <input type="checkbox" name="gstFree" defaultChecked={defaults.gstFree} style={{ width: 18, minHeight: 18 }} /> This item is GST-free (check with your accountant)
       </label>

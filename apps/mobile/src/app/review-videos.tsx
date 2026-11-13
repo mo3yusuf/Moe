@@ -64,7 +64,7 @@ function ReviewCard({ item, onDone }: { item: Pending; onDone(): void }) {
       {item.processing ? (
         <T muted>Still processing — pull down to refresh in a minute.</T>
       ) : item.previewUrl ? (
-        <VideoView player={player} style={{ width: '100%', aspectRatio: 9 / 16, borderRadius: radius.md, backgroundColor: '#000' }}
+        <VideoView player={player} style={{ width: '100%', aspectRatio: 9 / 16, height: undefined, borderRadius: radius.md, backgroundColor: '#000' }}
           contentFit="contain" nativeControls playsInline />
       ) : <T muted>File not uploaded yet.</T>}
       <T variant="heading">{item.caption ?? 'No caption'}</T>

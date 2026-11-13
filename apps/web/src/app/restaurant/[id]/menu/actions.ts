@@ -33,6 +33,7 @@ function readItem(form: FormData) {
       allergens: form.getAll('allergens').map(String).filter((a) => (ALLERGENS as readonly string[]).includes(a)),
       spice_level: spice === '' ? null : Math.min(4, Math.max(0, Number(spice))),
       gst_applicable: form.get('gstFree') !== 'on',
+      is_combo: form.get('isCombo') === 'on',
     },
   };
 }
@@ -81,23 +82,52 @@ export async function setItemImage(restaurantId: string, itemId: string, path: s
   revalidatePath(`/restaurant/${restaurantId}/menu/${itemId}`);
 }
 
+/**
+ * One option per line: "Name | price | up to N | https://photo". Every part after the name is optional
+ * and can be in any order, e.g. "Extra patty | 4.00 | up to 3" or "Coke | https://…/coke.jpg".
+ */
+function parseOptionLine(line: string, i: number) {
+  const [label, ...parts] = line.split('|').map((x) => x.trim());
+  let price: number | null = 0, maxQuantity = 1, imageUrl: string | null = null, bad = false;
+  for (const part of parts) {
+    if (!part) continue;
+    const qty = part.match(/^(?:x|up to|max)\s*(\d{1,2})$/i);
+    if (qty) maxQuantity = Math.min(20, Math.max(1, Number(qty[1])));
+    else if (/^https:\/\//.test(part)) imageUrl = part.slice(0, 500);
+    else { price = parsePrice(part.replace(/^\+/, '')); if (price == null) bad = true; }
+  }
+  return { row: { name: label!.slice(0, 80), price_delta_cents: price ?? 0, max_quantity: maxQuantity, image_url: imageUrl, sort_order: i }, bad };
+}
+
 export async function addOptionGroup(restaurantId: string, itemId: string, _p: FormState | undefined, form: FormData): Promise<FormState> {
   const name = String(form.get('name') ?? '').trim();
   const min = Number(form.get('min') ?? 0), max = Number(form.get('max') ?? 1);
+  const style = String(form.get('style') ?? 'list');
+  const parentOptionId = String(form.get('parent') ?? '') || null;
+  const linkDishes = form.get('linkDishes') === 'on';
   if (!name) return { error: 'Group name is required' };
+  if (!['list', 'chips', 'remove'].includes(style)) return { error: 'Pick how the choices are shown.' };
   if (!(min >= 0 && max >= 1 && max >= min && max <= 20)) return { error: 'Choose a valid min/max (e.g. required single choice: 1/1).' };
-  const options = String(form.get('options') ?? '').split('\n').map((l) => l.trim()).filter(Boolean).map((line, i) => {
-    const [label, price] = line.split('|').map((x) => x.trim());
-    return { name: label!.slice(0, 80), price_delta_cents: price ? parsePrice(price.replace(/^\+/, '')) : 0, sort_order: i };
-  });
-  if (!options.length) return { error: 'Add at least one option, one per line, e.g. "Extra cheese | 2.00"' };
-  if (options.some((o) => o.price_delta_cents == null)) return { error: 'Option prices must look like 2.00' };
+  const parsed = String(form.get('options') ?? '').split('\n').map((l) => l.trim()).filter(Boolean).map(parseOptionLine);
+  if (!parsed.length) return { error: 'Add at least one option, one per line, e.g. "Extra cheese | 2.00"' };
+  if (parsed.some((o) => o.bad)) return { error: 'Prices must look like 2.00, quantities like "up to 3", photos must start with https://' };
+  const options: Record<string, unknown>[] = parsed.map((o) => o.row);
   if (min > options.length) return { error: 'Minimum selections cannot exceed the number of options.' };
   const supabase = await supabaseServer();
-  const { data: group, error } = await supabase.from('menu_item_option_groups').insert({ menu_item_id: itemId, name, min_select: min, max_select: max }).select('id').single();
+  if (linkDishes) {
+    // Meal deals: link each choice to the dish with the same name, so it shows sold out when that dish is.
+    const { data: dishes } = await supabase.from('menu_items').select('id, name').eq('restaurant_id', restaurantId);
+    const byName = new Map((dishes ?? []).map((d) => [d.name.trim().toLowerCase(), d.id]));
+    const missing = options.filter((o) => !byName.has(String(o.name).toLowerCase())).map((o) => o.name);
+    if (missing.length) return { error: `These meal-deal choices don’t match a dish on your menu: ${missing.join(', ')}. Use the exact dish names.` };
+    for (const o of options) o.linked_menu_item_id = byName.get(String(o.name).toLowerCase());
+  }
+  const { data: group, error } = await supabase.from('menu_item_option_groups')
+    .insert({ menu_item_id: itemId, name, min_select: min, max_select: max, display_style: style, parent_option_id: parentOptionId })
+    .select('id').single();
   if (error || !group) return { error: error?.message ?? 'Could not add group' };
   const { error: optErr } = await supabase.from('menu_item_options').insert(options.map((o) => ({ ...o, group_id: group.id })));
-  if (optErr) return { error: optErr.message };
+  if (optErr) { await supabase.from('menu_item_option_groups').delete().eq('id', group.id); return { error: optErr.message }; }
   revalidatePath(`/restaurant/${restaurantId}/menu/${itemId}`);
   return { ok: 'Customisation added' };
 }

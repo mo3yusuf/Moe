@@ -94,7 +94,7 @@ export default function Create() {
             </Card>
           ) : (
             <View style={{ flexDirection: 'row', gap: space.md }}>
-              <VideoView player={preview} style={{ width: 120, height: 213, borderRadius: radius.md, backgroundColor: colors.surface }} contentFit="cover" nativeControls={false} />
+              <VideoView player={preview} style={{ width: 120, height: 213, borderRadius: radius.md, backgroundColor: colors.surface }} contentFit="contain" nativeControls={false} />
               <View style={{ flex: 1, gap: space.sm, justifyContent: 'center' }}>
                 <T muted>{picked.durationMs ? `${Math.round(picked.durationMs / 1000)} seconds` : 'Video selected'}</T>
                 <Button title="Choose a different video" variant="secondary" onPress={() => setPicked(null)} />
