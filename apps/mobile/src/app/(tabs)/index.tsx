@@ -13,6 +13,7 @@ import { FeedVideo, type InputMethod } from '@/features/feed/FeedVideo';
 import { useFeed, type FeedEntry } from '@/features/feed/use-feed';
 import { api } from '@/lib/api';
 import { config } from '@/lib/config';
+import { takePendingMatch } from '@/lib/pending-match';
 import { colors, font, HIT, space } from '@/theme/tokens';
 import { setSoundOn, useSoundOn } from '@/features/feed/sound';
 
@@ -38,6 +39,12 @@ export default function ForYou() {
       .then((me) => setNeedsOnboarding(!me.profile.onboardingCompletedAt))
       .catch(() => {});
   }, [tabFocused]);
+
+  // Opened an invite link while signed out? Go straight to that group now.
+  useEffect(() => {
+    const pending = takePendingMatch();
+    if (pending) router.push({ pathname: '/match/[code]', params: { code: pending } });
+  }, [router]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => setAppActive(s === 'active'));
@@ -199,6 +206,14 @@ export default function ForYou() {
               <View style={[styles.tabUnderline, { opacity: mode === m ? 1 : 0 }]} />
             </Pressable>
           ))}
+          {/* Crave Match (swipe with friends) where TikTok keeps its LIVE button. */}
+          {!config.demoMode ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Crave Match: swipe with friends" hitSlop={12}
+              onPress={() => router.push('/match')} style={styles.matchBtn}>
+              <Ionicons name="people" size={22} color={colors.text} />
+              <View style={styles.matchDot} />
+            </Pressable>
+          ) : null}
           {/* Sound on/off where TikTok keeps its search icon. Browsers start videos muted. */}
           <Pressable accessibilityRole="button" accessibilityLabel={soundOn ? 'Mute videos' : 'Turn sound on'} hitSlop={12}
             onPress={() => setSoundOn(!soundOn)} style={styles.soundBtn}>
@@ -238,6 +253,8 @@ const styles = StyleSheet.create({
   tabUnderline: { width: 28, height: 3, borderRadius: 2, backgroundColor: colors.text },
   headerTitle: { ...font.heading, fontSize: 17, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },
   soundBtn: { position: 'absolute', right: space.md, top: 0, bottom: 0, justifyContent: 'center' },
+  matchBtn: { position: 'absolute', left: space.md, top: 0, bottom: 0, justifyContent: 'center' },
+  matchDot: { position: 'absolute', top: 10, right: -4, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
   onboard: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: space.xs, backgroundColor: 'rgba(255,77,46,0.92)', borderRadius: 999, paddingHorizontal: space.md, paddingVertical: 6, marginTop: 2 },
   srNav: { position: 'absolute', right: space.sm, top: 80, gap: space.sm },
   srBtn: { width: HIT, height: HIT, borderRadius: HIT / 2, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center' },

@@ -1054,3 +1054,55 @@ test('comments: published videos only, counted, hideable by admins; allergen voc
   await c.query(`insert into public.user_taste_preferences (user_id, avoid_allergens) values ($1, '{peanut,sesame}')`, [u]);
   assert.ok((await expectDenied(c, `update public.user_taste_preferences set avoid_allergens = '{chocolate}' where user_id = $1`, [u])).error);
 }));
+
+test('crave match: join by code, everyone craves the same video → match; outsiders cannot see or swipe', () => tx(async (c) => {
+  const a = await createUser(c, 'match-a@example.com');
+  const b = await createUser(c, 'match-b@example.com');
+  const outsider = await createUser(c, 'match-out@example.com');
+
+  await as(c, a);
+  const room = (await c.query('select public.create_crave_room() as r')).rows[0].r;
+  assert.match(room.code, /^[A-HJ-NP-Z2-9]{6}$/);
+  let state = (await c.query('select public.crave_room_state($1) as s', [room.roomId])).rows[0].s;
+  assert.ok(state.deck.length > 0, 'deck holds published videos');
+  assert.equal(state.members.length, 1);
+  const video = state.deck[0].videoId;
+
+  // A craves alone: no match with a single member.
+  let res = (await c.query(`select public.crave_room_swipe($1, $2, 'right') as r`, [room.roomId, video])).rows[0].r;
+  assert.equal(res.matched, false);
+
+  // Outsider can't read or swipe; anon can't create.
+  await as(c, outsider);
+  assert.equal((await expectDenied(c, 'select public.crave_room_state($1)', [room.roomId])).error?.code, '42501');
+  assert.equal((await expectDenied(c, `select public.crave_room_swipe($1, $2, 'right')`, [room.roomId, video])).error?.code, '42501');
+  assert.equal((await c.query('select count(*)::int as n from public.crave_room_swipes')).rows[0].n, 0, 'RLS hides other rooms');
+  await as(c, 'anon');
+  assert.ok((await expectDenied(c, 'select public.create_crave_room()')).error);
+
+  // B joins with a lower-case code and craves the same video: it's a match.
+  await as(c, b);
+  await c.query('select public.join_crave_room($1)', [room.code.toLowerCase()]);
+  res = (await c.query(`select public.crave_room_swipe($1, $2, 'right') as r`, [room.roomId, video])).rows[0].r;
+  assert.equal(res.matched, true);
+  assert.equal(res.members, 2);
+  state = (await c.query('select public.crave_room_state($1) as s', [room.roomId])).rows[0].s;
+  assert.deepEqual(state.matches.map((m) => m.videoId), [video]);
+
+  // A different video with a left swipe from B is not a match.
+  const other = state.deck[1]?.videoId;
+  if (other) {
+    await as(c, a);
+    await c.query(`select public.crave_room_swipe($1, $2, 'right')`, [room.roomId, other]);
+    await as(c, b);
+    res = (await c.query(`select public.crave_room_swipe($1, $2, 'left') as r`, [room.roomId, other])).rows[0].r;
+    assert.equal(res.matched, false);
+  }
+
+  // Wrong codes and expired rooms are refused.
+  assert.equal((await expectDenied(c, 'select public.join_crave_room($1)', ['ZZZZZZ'])).error?.code, 'P0002');
+  await asSuperuser(c);
+  await c.query(`update public.crave_rooms set expires_at = now() - interval '1 minute' where id = $1`, [room.roomId]);
+  await as(c, outsider);
+  assert.equal((await expectDenied(c, 'select public.join_crave_room($1)', [room.code])).error?.code, 'P0001');
+}));

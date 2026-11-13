@@ -6,10 +6,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StripeProvider } from '@/lib/stripe';
 import { config } from '@/lib/config';
+import { capturePendingMatch } from '@/lib/pending-match';
 import { AuthProvider, useAuth } from '@/providers/auth';
 import { colors } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync();
+capturePendingMatch();
 
 const navTheme = {
   ...DarkTheme,
@@ -38,6 +40,8 @@ function RootNavigator() {
         <Stack.Screen name="order/[id]" options={{ headerShown: true, title: 'Order' }} />
         <Stack.Screen name="comments/[videoId]" options={{ headerShown: true, title: 'Comments', presentation: 'modal' }} />
         <Stack.Screen name="cravings" options={{ headerShown: true, title: 'Your Cravings' }} />
+        <Stack.Screen name="match/index" options={{ headerShown: true, title: 'Crave Match', presentation: 'modal' }} />
+        <Stack.Screen name="match/[code]" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="privacy" options={{ headerShown: true, title: 'Privacy & personalisation', presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
