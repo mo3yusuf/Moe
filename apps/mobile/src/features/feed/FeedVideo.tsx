@@ -5,9 +5,10 @@ import {
 } from '@crave/core';
 import { useEventListener } from 'expo';
 import * as Haptics from 'expo-haptics';
+import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { memo, useEffect, useRef, useState, type ComponentProps } from 'react';
-import { Image, Platform, Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Animated, {
   Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming,
@@ -19,6 +20,10 @@ import { track, watchSession } from './events';
 import type { FeedEntry } from './use-feed';
 import { useSoundOn } from './sound';
 import { Alert } from '@/lib/alert';
+
+/** Size videos to the box explicitly: on the web an absolutely positioned <video> otherwise takes its
+ *  native resolution (e.g. 3840px wide for 4K) and spills past the screen, which looks cropped/zoomed. */
+const FILL = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' } as const;
 
 export type InputMethod = 'gesture' | 'button' | 'accessibility_action';
 
@@ -62,19 +67,6 @@ function FeedVideoBase(props: FeedVideoProps) {
   });
   useEffect(() => { player.muted = !soundOn; }, [soundOn, player]);
   const [paused, setPaused] = useState(false);
-  // Fill the screen (like TikTok) only for tall videos; show wider ones whole with bars instead of
-  // cropping them into a "zoomed in" view. The thumbnail has the video's shape (Mux provides one);
-  // without one we assume vertical.
-  const [videoAspect, setVideoAspect] = useState<number | null>(null);
-  useEffect(() => {
-    if (!item.thumbnailUrl) return;
-    let alive = true;
-    Image.getSize(item.thumbnailUrl, (w, h) => { if (alive && w && h) setVideoAspect(w / h); }, () => {});
-    return () => { alive = false; };
-  }, [item.thumbnailUrl]);
-  const screenAspect = width && height ? width / height : 9 / 19.5;
-  // Unknown shape (no thumbnail): assume a vertical phone video and fill, as almost all uploads are.
-  const fit = videoAspect == null || videoAspect <= screenAspect * 1.35 ? 'cover' : 'contain';
   const [stamp, setStamp] = useState<SwipeDirection | null>(null);
   const lastTime = useRef(0);
   const durationMs = item.durationMs ?? 0;
@@ -207,7 +199,17 @@ function FeedVideoBase(props: FeedVideoProps) {
           onAccessibilityAction={onA11yAction}
         >
           {shouldLoad ? (
-            <VideoView player={player} style={StyleSheet.absoluteFill} contentFit={fit} nativeControls={false} playsInline />
+            <>
+              {/* The whole video is always visible, whatever shape it was filmed in (contain, never crop).
+                  Any space around it shows a blurred, darkened copy of its preview image, not bare bars. */}
+              {item.thumbnailUrl ? (
+                <>
+                  <ExpoImage source={{ uri: item.thumbnailUrl }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={40} accessibilityIgnoresInvertColors />
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+                </>
+              ) : null}
+              <VideoView player={player} style={FILL} contentFit="contain" nativeControls={false} playsInline />
+            </>
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
               <Text style={[font.title, { color: colors.textFaint }]}>{item.menuItem?.name ?? 'CRAVE'}</Text>

@@ -11,7 +11,7 @@ export default function Watch() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack.Screen options={{ headerShown: true, title: title ?? 'Video', presentation: 'modal' }} />
-      <VideoView player={player} style={{ flex: 1 }} contentFit="contain" nativeControls />
+      <VideoView player={player} style={{ flex: 1, width: '100%', height: '100%' }} contentFit="contain" nativeControls />
     </View>
   );
 }

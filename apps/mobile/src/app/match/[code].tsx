@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,6 +14,10 @@ import { setSoundOn, useSoundOn } from '@/features/feed/sound';
 import { takePendingMatch } from '@/lib/pending-match';
 import { supabase } from '@/lib/supabase';
 import { colors, font, palette, radius, space } from '@/theme/tokens';
+
+/** Size videos to the box explicitly: on the web an absolutely positioned <video> otherwise takes its
+ *  native resolution (e.g. 3840px wide for 4K) and spills past the screen, which looks cropped/zoomed. */
+const FILL = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' } as const;
 
 interface DeckItem {
   videoId: string; playbackUrl: string | null; thumbnailUrl: string | null; caption: string | null;
@@ -285,7 +290,16 @@ function SwipeCard({ item, active, othersCraved, onSwipe }: {
       accessibilityHint="Swipe right to crave it, left to pass, or use the buttons below"
       style={[styles.card, WEB_NO_TOUCH_SCROLL, !active && styles.cardBehind, active && { transform: [{ translateX: pos.x }, { translateY: pos.y }, { rotate }] }]}>
       {active && item.playbackUrl ? (
-        <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} playsInline />
+        <>
+          {/* Whole video always visible (never cropped); blurred preview fills the rest of the card. */}
+          {item.thumbnailUrl ? (
+            <>
+              <ExpoImage source={{ uri: item.thumbnailUrl }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={40} accessibilityIgnoresInvertColors />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+            </>
+          ) : null}
+          <VideoView player={player} style={FILL} contentFit="contain" nativeControls={false} playsInline />
+        </>
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surfaceRaised }]} />
       )}
