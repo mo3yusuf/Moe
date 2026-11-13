@@ -26,6 +26,8 @@ interface RoomState {
 }
 
 const POLL_MS = 2500;
+// Phone browsers: the card owns every drag (nothing here scrolls), so the browser must not claim them.
+const WEB_NO_TOUCH_SCROLL = Platform.OS === 'web' ? ({ touchAction: 'none' } as object) : null;
 const SWIPE_OUT = 120;
 const AVATAR_COLORS = ['#FF4D2E', '#4C7DFF', '#22C55E', '#F59E0B', '#A855F7', '#14B8A6', '#EC4899', '#EAB308'];
 
@@ -281,7 +283,7 @@ function SwipeCard({ item, active, othersCraved, onSwipe }: {
       accessible={active}
       accessibilityLabel={`${item.caption ?? 'Food video'}${item.restaurantName ? ` at ${item.restaurantName}` : ''}`}
       accessibilityHint="Swipe right to crave it, left to pass, or use the buttons below"
-      style={[styles.card, !active && styles.cardBehind, active && { transform: [{ translateX: pos.x }, { translateY: pos.y }, { rotate }] }]}>
+      style={[styles.card, WEB_NO_TOUCH_SCROLL, !active && styles.cardBehind, active && { transform: [{ translateX: pos.x }, { translateY: pos.y }, { rotate }] }]}>
       {active && item.playbackUrl ? (
         <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} playsInline />
       ) : (

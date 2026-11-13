@@ -46,6 +46,9 @@ export interface FeedVideoProps {
 }
 
 const STAMP_MS = 1100;
+// Phone browsers: let the page handle vertical drags (scroll to next video) and leave horizontal drags
+// to the swipe gesture. Without this the browser claims sideways touches and cancels the swipe.
+const WEB_PAN_Y = Platform.OS === 'web' ? ({ touchAction: 'pan-y' } as object) : null;
 
 function FeedVideoBase(props: FeedVideoProps) {
   const { item, width, height, isActive, preload, focused, bottomInset, orderingEnabled } = props;
@@ -127,6 +130,9 @@ function FeedVideoBase(props: FeedVideoProps) {
   };
 
   const pan = usePanGesture({
+    // Web: the handler writes this onto the card as CSS touch-action (its default 'none' blocks scrolling).
+    // @ts-expect-error not in the public config type, but honoured by the web handler
+    touchAction: 'pan-y',
     activeOffsetX: PAN_ACTIVATION.activeOffsetX,
     failOffsetY: PAN_ACTIVATION.failOffsetY,
     onUpdate: (e) => {
@@ -139,6 +145,8 @@ function FeedVideoBase(props: FeedVideoProps) {
     },
   });
   const tap = useTapGesture({
+    // @ts-expect-error see above
+    touchAction: 'pan-y',
     maxDuration: 250,
     onDeactivate: (e) => {
       'worklet';
@@ -186,9 +194,11 @@ function FeedVideoBase(props: FeedVideoProps) {
 
   return (
     <View style={{ width, height, backgroundColor: colors.bg, overflow: 'hidden' }}>
-      <GestureDetector gesture={gesture}>
+      {/* touchAction 'pan-y': in phone browsers, vertical drags go to the page so the feed scrolls to the
+          next/previous video like TikTok; the gesture library otherwise blocks all touch scrolling here. */}
+      <GestureDetector gesture={gesture} touchAction="pan-y">
         <Animated.View
-          style={[StyleSheet.absoluteFill, cardStyle]}
+          style={[StyleSheet.absoluteFill, cardStyle, WEB_PAN_Y]}
           accessible
           accessibilityRole="adjustable"
           accessibilityLabel={summary}
@@ -353,7 +363,8 @@ const styles = StyleSheet.create({
   railLabel: { fontSize: 12, fontWeight: '700', color: colors.text },
   iconShadow: { textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
   info: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.md, paddingRight: 76, gap: 4 },
-  shadow: { color: colors.text, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },
+  // pointerEvents 'none': caption text lets touches through to the video, so swipes work from anywhere.
+  shadow: { color: colors.text, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 }, pointerEvents: 'none' },
   sponsored: { alignSelf: 'flex-start', backgroundColor: colors.warning, paddingHorizontal: space.sm, paddingVertical: 2, borderRadius: radius.sm },
   orderRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.md, marginTop: space.sm, marginRight: -68 },
   orderBtn: { minHeight: 52, paddingHorizontal: space.xl, borderRadius: radius.pill, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
