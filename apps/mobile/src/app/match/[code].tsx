@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as Haptics from 'expo-haptics';
+import { haptic } from '@/lib/haptics';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
@@ -36,14 +36,7 @@ const WEB_NO_TOUCH_SCROLL = Platform.OS === 'web' ? ({ touchAction: 'none' } as 
 const SWIPE_OUT = 120;
 const AVATAR_COLORS = ['#FF4D2E', '#4C7DFF', '#22C55E', '#F59E0B', '#A855F7', '#14B8A6', '#EC4899', '#EAB308'];
 
-function buzz(kind: 'light' | 'success') {
-  if (Platform.OS === 'web') {
-    try { (navigator as Navigator & { vibrate?: (p: number | number[]) => boolean }).vibrate?.(kind === 'success' ? [30, 60, 30, 60, 120] : 15); } catch { /* unsupported */ }
-    return;
-  }
-  if (kind === 'success') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  else void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-}
+const buzz = (kind: 'light' | 'success') => haptic(kind);
 
 /** A Crave Match room: everyone swipes the same deck; a dish all members crave is a match. */
 export default function MatchRoom() {
