@@ -26,13 +26,16 @@ $RUN_AS env PATH="$PATH" pg_ctl -D "$DATA" -o "-p $PORT -k $SOCK -c listen_addre
 PSQL=(psql -h "$SOCK" -p "$PORT" -U postgres -v ON_ERROR_STOP=1 -q)
 "${PSQL[@]}" -c "create database crave_test" postgres
 "${PSQL[@]}" -d crave_test -f "$HERE/supabase_shim.sql"
-for f in "$ROOT"/supabase/migrations/*.sql; do
-  echo "applying $(basename "$f")"
-  "${PSQL[@]}" -d crave_test -f "$f"
-done
+# Apply migrations with the same runner production uses (scripts/migrate.mjs), twice: the second run
+# must find nothing to do.
+export CRAVE_TEST_DB_URL="postgresql://postgres@localhost:$PORT/crave_test?host=$SOCK"
+DATABASE_URL="$CRAVE_TEST_DB_URL" node "$ROOT/scripts/migrate.mjs"
+DATABASE_URL="$CRAVE_TEST_DB_URL" node "$ROOT/scripts/migrate.mjs" | grep -q "0 pending" || { echo "migrate.mjs is not idempotent"; exit 1; }
 echo "applying seed.sql"
 "${PSQL[@]}" -d crave_test -f "$ROOT/supabase/seed.sql"
 
 export CRAVE_TEST_DB_URL="postgresql://postgres@localhost:$PORT/crave_test?host=$SOCK"
 cd "$ROOT"
+# Inspect mode: CRAVE_TEST_SQL=file.sql prints a query's results against the freshly built database.
+if [ -n "${CRAVE_TEST_SQL:-}" ]; then "${PSQL[@]}" -d crave_test -P pager=off -f "$CRAVE_TEST_SQL"; exit 0; fi
 node --test "$HERE"/*.test.mjs

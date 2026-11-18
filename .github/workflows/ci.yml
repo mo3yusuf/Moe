@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, for the secret scan
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -24,6 +26,8 @@ jobs:
             sudo apt-get install -y -qq postgresql
           fi
       - run: npm ci
+      - name: Secret scan (files and git history)
+        run: npm run check:secrets
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:db

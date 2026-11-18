@@ -1,17 +1,21 @@
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StripeProvider } from '@/lib/stripe';
 import { config } from '@/lib/config';
 import { capturePendingMatch } from '@/lib/pending-match';
+import { initSentry, reportError } from '@/lib/sentry';
+import { prefetchFeed } from '@/features/feed/use-feed';
 import { AuthProvider, useAuth } from '@/providers/auth';
 import { colors } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync();
 capturePendingMatch();
+initSentry();
 
 const navTheme = {
   ...DarkTheme,
@@ -21,6 +25,8 @@ const navTheme = {
 function RootNavigator() {
   const { session, isLoading, demoMode } = useAuth();
   useEffect(() => { if (!isLoading) SplashScreen.hideAsync(); }, [isLoading]);
+  // Signed in: start fetching the first feed page now, while the screens are still being drawn.
+  useEffect(() => { if (session) prefetchFeed(); }, [session]);
   if (isLoading) return null;
   const signedIn = demoMode || !!session;
 
@@ -40,6 +46,7 @@ function RootNavigator() {
         <Stack.Screen name="order/[id]" options={{ headerShown: true, title: 'Order' }} />
         <Stack.Screen name="comments/[videoId]" options={{ headerShown: true, title: 'Comments', presentation: 'modal' }} />
         <Stack.Screen name="cravings" options={{ headerShown: true, title: 'Your Cravings' }} />
+        <Stack.Screen name="reset-password" options={{ headerShown: true, title: 'New password' }} />
         <Stack.Screen name="match/index" options={{ headerShown: true, title: 'Crave Match', presentation: 'modal' }} />
         <Stack.Screen name="match/[code]" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="privacy" options={{ headerShown: true, title: 'Privacy & personalisation', presentation: 'modal' }} />
@@ -48,6 +55,20 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
     </Stack>
+  );
+}
+
+// A screen crashed: report it (Sentry) and offer a way back instead of a blank page.
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => { reportError(error); }, [error]);
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 }}>
+      <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700' }}>Something went wrong</Text>
+      <Text style={{ color: colors.textMuted, textAlign: 'center' }}>We've been notified. Try again in a moment.</Text>
+      <Pressable onPress={retry} accessibilityRole="button" style={{ marginTop: 8, backgroundColor: colors.accent, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 999 }}>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>Try again</Text>
+      </Pressable>
+    </View>
   );
 }
 

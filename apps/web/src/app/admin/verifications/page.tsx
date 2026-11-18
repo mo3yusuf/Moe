@@ -5,10 +5,15 @@ import { decide } from './actions';
 export default async function Verifications() {
   const supabase = await supabaseServer();
   const { data } = await supabase.from('restaurant_verifications')
-    .select('id, status, submitted_at, document_paths, food_business_licence_number, restaurants(id, name, legal_name, abn, cuisines, restaurant_locations(address_line1, suburb, postcode, phone))')
+    .select('id, status, submitted_at, document_paths, food_business_licence_number, restaurants(id, name, cuisines, restaurant_locations(address_line1, suburb, postcode, phone))')
     .in('status', ['submitted', 'in_review', 'more_info_required']).order('submitted_at');
+  // ABN and legal name are private fields: admins read them through restaurants_private.
+  const rids = [...new Set((data ?? []).map((v: any) => v.restaurants?.id).filter(Boolean))];
+  const { data: priv } = rids.length ? await supabase.rpc('restaurants_private', { p_ids: rids }) : { data: [] };
+  const privById = new Map(((priv ?? []) as any[]).map((p) => [p.id, p]));
   const rows = await Promise.all((data ?? []).map(async (v: any) => ({
     ...v,
+    restaurants: v.restaurants ? { ...v.restaurants, ...(privById.get(v.restaurants.id) ?? {}) } : v.restaurants,
     docs: await Promise.all((v.document_paths ?? []).map(async (p: string) => ({
       name: p.split('/').pop(), url: (await supabase.storage.from('verification-docs').createSignedUrl(p, 600)).data?.signedUrl,
     }))),

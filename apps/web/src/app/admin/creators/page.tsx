@@ -4,10 +4,9 @@ import { updateCreator } from '../actions';
 export default async function Creators({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const filter = (await searchParams).filter;
   const supabase = await supabaseServer();
-  let q = supabase.from('creators').select('user_id, handle, is_verified, affiliate_status, affiliate_commission_bps, affiliate_applied_at, created_at').order('affiliate_applied_at', { ascending: false, nullsFirst: false }).limit(200);
-  if (filter === 'applied') q = q.eq('affiliate_status', 'applied');
-  const { data: creators } = await q;
-  const ids = (creators ?? []).map((c) => c.user_id);
+  // Affiliate fields are private: the admin list comes from an admin-only function.
+  const { data: creators } = await supabase.rpc('admin_list_creators', { p_status: filter === 'applied' ? 'applied' : null }) as { data: any[] | null };
+  const ids = (creators ?? []).map((c: any) => c.user_id);
   const { data: comms } = ids.length ? await supabase.from('creator_commissions').select('creator_id, status, amount_cents').in('creator_id', ids) : { data: [] };
   const earned = new Map<string, Record<string, number>>();
   for (const c of (comms ?? []) as any[]) { const e = earned.get(c.creator_id) ?? {}; e[c.status] = (e[c.status] ?? 0) + c.amount_cents; earned.set(c.creator_id, e); }

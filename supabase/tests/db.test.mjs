@@ -118,8 +118,9 @@ test('restaurant onboarding: creator becomes owner; status and commission are pr
   await as(c, owner);
   const { rows } = await c.query(`
     insert into public.restaurants (name, slug, created_by, status, commission_rate_bps)
-    values ('Test Cafe', 'test-cafe', $1, 'verified', 0) returning id, status, commission_rate_bps`, [owner]);
+    values ('Test Cafe', 'test-cafe', $1, 'verified', 0) returning id, status`, [owner]);
   const rid = rows[0].id;
+  rows[0].commission_rate_bps = (await c.query('select commission_rate_bps from public.restaurants_private(array[$1::uuid])', [rid])).rows[0].commission_rate_bps;
   assert.equal(rows[0].status, 'draft', 'owner cannot self-verify on insert');
   assert.equal(rows[0].commission_rate_bps, 1000, 'default commission applied');
 
@@ -159,7 +160,7 @@ test('admin verification flow and commission change are audited', () => tx(async
   await as(c, admin);
   await c.query('select public.admin_decide_verification($1, true, $2)', [vid, 'Licence checked']);
   await c.query('select public.admin_set_commission($1, 800, $2)', [rid, 'Launch partner']);
-  const r = await c.query('select status, commission_rate_bps from public.restaurants where id = $1', [rid]);
+  const r = await c.query('select r.status, p.commission_rate_bps from public.restaurants r join public.restaurants_private(array[$1::uuid]) p on p.id = r.id where r.id = $1', [rid]);
   assert.equal(r.rows[0].status, 'verified');
   assert.equal(r.rows[0].commission_rate_bps, 800);
   const audit = await c.query(`select action from public.audit_log where entity_id = $1 order by id`, [rid]);
@@ -741,7 +742,8 @@ test('admin metrics, user lookup and settings are admin-only and audited', () =>
   // The new default applies to the next restaurant created.
   const owner = await createUser(c, 'next-owner@example.com');
   await as(c, owner);
-  assert.equal((await c.query(`insert into public.restaurants (name, slug, created_by) values ('Next', 'next-one', $1) returning commission_rate_bps`, [owner])).rows[0].commission_rate_bps, 850);
+  const nextId = (await c.query(`insert into public.restaurants (name, slug, created_by) values ('Next', 'next-one', $1) returning id`, [owner])).rows[0].id;
+  assert.equal((await c.query('select commission_rate_bps from public.restaurants_private(array[$1::uuid])', [nextId])).rows[0].commission_rate_bps, 850);
 }));
 
 test('refunds: approve requested, partial refunds capped at amount paid', () => tx(async (c) => {
@@ -809,7 +811,7 @@ test('fraud rules flag refund abuse once; creators managed by admins', () => tx(
   const creator = (await c.query(`select ${id('user-demo-creator2')} as x`)).rows[0].x;
   assert.equal((await expectDenied(c, `select public.admin_update_creator($1, true, 'approved', null)`, [creator])).error?.code, '23514');
   await c.query(`select public.admin_update_creator($1, true, 'approved', 500)`, [creator]);
-  const cr = (await c.query('select is_verified, affiliate_status, affiliate_commission_bps from public.creators where user_id = $1', [creator])).rows[0];
+  const cr = (await c.query('select c.is_verified, p.affiliate_status, p.affiliate_commission_bps from public.creators c join public.creators_private(array[$1::uuid]) p on p.user_id = c.user_id where c.user_id = $1', [creator])).rows[0];
   assert.deepEqual(cr, { is_verified: true, affiliate_status: 'approved', affiliate_commission_bps: 500 });
 }));
 
@@ -1124,4 +1126,143 @@ test('menu customisation: nested groups stay within the dish; combo links stay w
   if (foreign) assert.equal((await expectDenied(c, `insert into public.menu_item_options (group_id, name, linked_menu_item_id) values ($1, 'Bad', $2)`, [g1, foreign])).error?.code, '22023');
   // Quantity limits are bounded.
   assert.ok((await expectDenied(c, `insert into public.menu_item_options (group_id, name, max_quantity) values ($1, 'Too many', 50)`, [g1])).error);
+}));
+
+test('isolation: one customer cannot see or touch another customer’s orders, payments, refunds or basket', () => tx(async (c) => {
+  const alice = await createUser(c, 'iso-alice@example.com');
+  const bob = await createUser(c, 'iso-bob@example.com');
+  const aliceOrder = await paidOrder(c, alice);
+  await paidOrder(c, bob);
+  await as(c, alice);
+  await c.query(`select public.customer_cancel_order($1, 'changed my mind')`, [aliceOrder.id]); // creates a refund request
+  await asSuperuser(c);
+  await c.query(`insert into public.baskets (user_id, restaurant_id, location_id) values ($1, ${id('r-valley-smash')}, ${id('l-valley-smash')})`, [alice]);
+
+  await as(c, bob);
+  const tables = ['orders', 'order_items', 'order_status_events', 'payments', 'refunds', 'deliveries'];
+  for (const t of tables) {
+    const col = t === 'orders' ? 'id' : 'order_id';
+    const n = (await c.query(`select count(*)::int n from public.${t} where ${col} = $1`, [aliceOrder.id])).rows[0].n;
+    assert.equal(n, 0, `bob must not see alice's ${t}`);
+  }
+  assert.equal((await c.query('select count(*)::int n from public.orders where user_id <> $1', [bob])).rows[0].n, 0, 'bob sees only his own orders');
+  assert.equal((await c.query('select count(*)::int n from public.baskets where user_id = $1', [alice])).rows[0].n, 0, 'baskets are private');
+  assert.equal((await c.query('select count(*)::int n from public.notifications where user_id <> $1', [bob])).rows[0].n, 0, 'notifications are private');
+  // Writes: bob can't change or cancel alice's order.
+  assert.equal((await expectDenied(c, `update public.orders set pickup_name = 'hacked' where id = $1`, [aliceOrder.id])).rowCount ?? 0, 0);
+  assert.ok((await expectDenied(c, `select public.customer_cancel_order($1, 'not mine')`, [aliceOrder.id])).error, 'bob cannot cancel alice’s order');
+  assert.equal((await c.query('select count(*)::int n from public.refunds')).rows[0].n, 0, 'bob sees no refunds but his own (none)');
+
+  // Anonymous visitors see no orders at all.
+  await as(c, 'anon');
+  const anonRows = await expectDenied(c, 'select id from public.orders');
+  assert.ok(anonRows.error || anonRows.rowCount === 0, 'anon cannot read orders');
+
+  // Alice still sees her own.
+  await as(c, alice);
+  assert.equal((await c.query('select count(*)::int n from public.orders where id = $1', [aliceOrder.id])).rows[0].n, 1);
+  assert.ok((await c.query('select count(*)::int n from public.refunds where order_id = $1', [aliceOrder.id])).rows[0].n >= 1, 'alice sees her own refund');
+  assert.ok((await c.query('select count(*)::int n from public.payments where order_id = $1', [aliceOrder.id])).rows[0].n >= 1, 'and her own payment');
+}));
+
+test('isolation: one restaurant cannot see or change another restaurant’s orders, payouts, sales, staff, documents or menu', () => tx(async (c) => {
+  // Valley Smash is run by the demo owner; a second owner runs a new restaurant of their own.
+  const ownerA = await ownerId(c);
+  const ownerB = await createUser(c, 'iso-owner-b@example.com');
+  await as(c, ownerB);
+  const rB = (await c.query(`insert into public.restaurants (name, slug, created_by) values ('Rival Grill', 'rival-grill', $1) returning id`, [ownerB])).rows[0].id;
+  const rA = (await c.query(`select ${id('r-valley-smash')} as x`)).rows[0].x;
+
+  const cust = await createUser(c, 'iso-cust@example.com');
+  const orderA = await paidOrder(c, cust);
+  await asSuperuser(c);
+  await c.query(`insert into public.restaurant_payouts (restaurant_id, amount_cents, status) values ($1, 5000, 'paid')`, [rA]);
+  await c.query(`insert into public.restaurant_verifications (restaurant_id, submitted_by, document_paths) values ($1, $2, '{doc.pdf}')`, [rA, ownerA]);
+
+  await as(c, ownerB);
+  // Reads
+  assert.equal((await c.query('select count(*)::int n from public.orders where restaurant_id = $1', [rA])).rows[0].n, 0, 'orders');
+  assert.equal((await c.query('select count(*)::int n from public.order_items where order_id = $1', [orderA.id])).rows[0].n, 0, 'order items');
+  assert.equal((await c.query('select count(*)::int n from public.payments where order_id = $1', [orderA.id])).rows[0].n, 0, 'payments');
+  assert.equal((await c.query('select count(*)::int n from public.restaurant_payouts where restaurant_id = $1', [rA])).rows[0].n, 0, 'payouts');
+  assert.equal((await c.query('select count(*)::int n from public.restaurant_verifications where restaurant_id = $1', [rA])).rows[0].n, 0, 'verification documents');
+  assert.equal((await c.query('select count(*)::int n from public.restaurant_members where restaurant_id = $1', [rA])).rows[0].n, 0, 'staff list');
+  assert.equal((await c.query('select count(*)::int n from public.restaurants_private(array[$1::uuid])', [rA])).rows[0].n, 0, 'private business fields');
+  assert.equal((await c.query('select count(*)::int n from public.restaurants_private(array[$1::uuid])', [rB])).rows[0].n, 1, 'but its own are visible');
+  assert.ok((await expectDenied(c, `select * from public.restaurant_sales_report($1, now() - interval '30 days', now())`, [rA])).error, 'sales report');
+  // Private columns are not readable directly by anyone through the API roles.
+  assert.ok((await expectDenied(c, 'select commission_rate_bps from public.restaurants where id = $1', [rA])).error, 'commission column is private');
+  assert.ok((await expectDenied(c, 'select stripe_account_id from public.restaurants where id = $1', [rB])).error, 'even its own Stripe id goes via restaurants_private');
+
+  // Writes
+  assert.ok((await expectDenied(c, `select public.restaurant_update_order_status($1, 'accepted')`, [orderA.id])).error, 'cannot accept another restaurant’s order');
+  assert.equal((await expectDenied(c, `update public.menu_items set price_cents = 1 where restaurant_id = $1`, [rA])).rowCount ?? 0, 0, 'cannot reprice another menu');
+  assert.ok((await expectDenied(c, `insert into public.menu_items (restaurant_id, name, price_cents) values ($1, 'Fake', 100)`, [rA])).error, 'cannot add to another menu');
+  assert.equal((await expectDenied(c, `update public.restaurants set description = 'hacked' where id = $1`, [rA])).rowCount ?? 0, 0, 'cannot edit another restaurant');
+  assert.ok((await expectDenied(c, `insert into public.restaurant_members (restaurant_id, user_id, role) values ($1, $2, 'owner')`, [rA, ownerB])).error, 'cannot add itself as staff elsewhere');
+  assert.ok((await expectDenied(c, `insert into storage.objects (bucket_id, name) values ('verification-docs', $1)`, [`${rA}/forged.pdf`])).error, 'cannot upload documents for another restaurant');
+
+  // The rightful owner still sees everything for their own restaurant.
+  await as(c, ownerA);
+  assert.equal((await c.query('select count(*)::int n from public.orders where id = $1', [orderA.id])).rows[0].n, 1);
+  assert.equal((await c.query('select count(*)::int n from public.restaurant_payouts where restaurant_id = $1', [rA])).rows[0].n, 1);
+  assert.equal((await c.query('select count(*)::int n from public.restaurants_private(array[$1::uuid])', [rA])).rows[0].n, 1);
+}));
+
+test('privacy: anonymous visitors see public restaurant and creator profiles but none of their business fields', () => tx(async (c) => {
+  await as(c, 'anon');
+  assert.ok((await c.query(`select name, cuisines from public.restaurants where status = 'verified' limit 1`)).rowCount >= 1, 'public fields readable');
+  for (const col of ['abn', 'legal_name', 'commission_rate_bps', 'stripe_account_id', 'payouts_enabled']) {
+    assert.ok((await expectDenied(c, `select ${col} from public.restaurants limit 1`)).error, `restaurants.${col} hidden`);
+  }
+  assert.ok((await c.query('select handle from public.creators limit 1')).rowCount >= 1, 'creator handles readable');
+  for (const col of ['affiliate_status', 'affiliate_commission_bps', 'stripe_account_id', 'payouts_enabled']) {
+    assert.ok((await expectDenied(c, `select ${col} from public.creators limit 1`)).error, `creators.${col} hidden`);
+  }
+  assert.ok((await expectDenied(c, 'select * from public.restaurants_private(array[gen_random_uuid()])')).error, 'anon cannot call restaurants_private');
+  const someone = await createUser(c, 'iso-nosy@example.com');
+  await as(c, someone);
+  const creator = (await c.query(`select ${id('user-demo-creator')} as x`)).rows[0].x;
+  assert.equal((await c.query('select count(*)::int n from public.creators_private(array[$1::uuid])', [creator])).rows[0].n, 0, 'other creators’ private fields hidden');
+  assert.ok((await expectDenied(c, 'select * from public.admin_list_creators(null)')).error, 'admin list is admin-only');
+}));
+
+test('email outbox: receipts and alerts are claimed once, leased for retry, and server-only', () => tx(async (c) => {
+  const cust = await createUser(c, 'receipt-me@example.com');
+  const order = await paidOrder(c, cust, { qty: 2 });
+  await asSuperuser(c); // the API worker runs with the service role (privileged)
+
+  const receipts = (await c.query('select * from public.receipt_outbox_claim(100)')).rows.filter((r) => r.order_id === order.id);
+  assert.equal(receipts.length, 1, 'paid order needs a receipt');
+  assert.equal(receipts[0].email, 'receipt-me@example.com');
+  assert.equal(receipts[0].total_cents, order.total_cents);
+  assert.equal(receipts[0].items.length, 1);
+  assert.equal(receipts[0].items[0].quantity, 2);
+  assert.equal((await c.query('select * from public.receipt_outbox_claim(100)')).rows.filter((r) => r.order_id === order.id).length, 0, 'claimed receipts are leased, not sent twice');
+  await c.query(`update public.orders set receipt_claimed_at = now() - interval '6 minutes' where id = $1`, [order.id]);
+  assert.equal((await c.query('select * from public.receipt_outbox_claim(100)')).rows.filter((r) => r.order_id === order.id).length, 1, 'a crashed send is retried after the lease');
+  await c.query('select public.receipt_outbox_done(array[$1::uuid])', [order.id]);
+  await c.query(`update public.orders set receipt_claimed_at = null where id = $1`, [order.id]);
+  assert.equal((await c.query('select * from public.receipt_outbox_claim(100)')).rows.filter((r) => r.order_id === order.id).length, 0, 'sent receipts are never re-sent');
+
+  const owner = await ownerId(c);
+  const alerts = (await c.query('select * from public.email_outbox_claim(100)')).rows.filter((r) => r.data.order_id === order.id);
+  assert.deepEqual(alerts.map((a) => [a.user_id, a.type]), [[owner, 'new_order']], 'restaurant staff get a new-order email');
+  assert.equal(alerts[0].restaurant_id, order.restaurant_id);
+  await c.query('select public.email_outbox_done($1::uuid[])', [alerts.map((a) => a.id)]);
+
+  // Customers are emailed when the order is ready, not for every step.
+  await as(c, owner);
+  await c.query(`select public.restaurant_update_order_status($1, 'accepted')`, [order.id]);
+  await c.query(`select public.restaurant_update_order_status($1, 'ready')`, [order.id]);
+  await asSuperuser(c);
+  const updates = (await c.query('select * from public.email_outbox_claim(100)')).rows.filter((r) => r.data.order_id === order.id);
+  assert.deepEqual(updates.map((u) => [u.email, u.data.status]), [['receipt-me@example.com', 'ready']]);
+
+  for (const who of [cust, 'anon']) {
+    await as(c, who);
+    assert.ok((await expectDenied(c, 'select * from public.email_outbox_claim(10)')).error, 'outbox is server-only');
+    assert.ok((await expectDenied(c, 'select * from public.receipt_outbox_claim(10)')).error, 'receipts outbox is server-only');
+    assert.ok((await expectDenied(c, 'select public.receipt_outbox_done(array[$1::uuid])', [order.id])).error);
+  }
 }));

@@ -25,3 +25,13 @@ export const config = {
    */
   demoMode: !supabaseUrl || !supabaseAnonKey || !apiUrl,
 } as const;
+
+// Web: warm up connections to the API and Supabase as soon as the app script runs.
+if (typeof document !== 'undefined') {
+  for (const href of [apiUrl, supabaseUrl]) {
+    if (!href || !/^https:/.test(href)) continue;
+    const l = document.createElement('link');
+    l.rel = 'preconnect'; l.href = new URL(href).origin; l.crossOrigin = 'anonymous';
+    document.head.appendChild(l);
+  }
+}
