@@ -23,6 +23,9 @@ import { Alert } from '@/lib/alert';
 
 /** Size videos to the box explicitly: on the web an absolutely positioned <video> otherwise takes its
  *  native resolution (e.g. 3840px wide for 4K) and spills past the screen, which looks cropped/zoomed. */
+/** Ask Mux for a thumbnail at the size we show (a tiny one is plenty for the blurred backdrop). */
+const sized = (url: string, width: number) => (/image\.mux\.com/.test(url) ? `${url}${url.includes('?') ? '&' : '?'}width=${width}` : url);
+
 const FILL = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' } as const;
 
 export type InputMethod = 'gesture' | 'button' | 'accessibility_action';
@@ -228,10 +231,12 @@ function FeedVideoBase(props: FeedVideoProps) {
                   Any space around it shows a blurred, darkened copy of its preview image, not bare bars. */}
               {item.thumbnailUrl ? (
                 <>
-                  <ExpoImage source={{ uri: item.thumbnailUrl }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={40} accessibilityIgnoresInvertColors />
+                  <ExpoImage source={{ uri: sized(item.thumbnailUrl, 64) }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={40} accessibilityIgnoresInvertColors />
                   <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
                 </>
               ) : null}
+              {/* The preview image shows instantly (sharp, whole) while the stream buffers. */}
+              {item.thumbnailUrl ? <ExpoImage source={{ uri: sized(item.thumbnailUrl, 540) }} style={FILL} contentFit="contain" priority={isActive ? 'high' : 'low'} accessibilityIgnoresInvertColors /> : null}
               <VideoView player={player} style={FILL} contentFit="contain" nativeControls={false} playsInline />
             </>
           ) : (

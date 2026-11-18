@@ -57,6 +57,7 @@ feedRoutes.get('/feed', async (c) => {
       followingCreator: viewer.followedCreators?.has(r.candidate.uploaderId) ?? false,
     }, r.ranking)),
   };
+  c.header('Cache-Control', 'no-store'); // personal and changes every request
   return c.json(body);
 });
 

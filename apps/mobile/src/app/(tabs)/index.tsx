@@ -17,7 +17,8 @@ import { takePendingMatch } from '@/lib/pending-match';
 import { colors, font, HIT, space } from '@/theme/tokens';
 import { setSoundOn, useSoundOn } from '@/features/feed/sound';
 
-const PRELOAD_AHEAD = 1;
+/** Videos buffered ahead of the one playing, so swiping up starts instantly. */
+const PRELOAD_AHEAD = 2;
 
 export default function ForYou() {
   const insets = useSafeAreaInsets();
@@ -166,9 +167,9 @@ export default function ForYou() {
           getItemLayout={(_, index) => ({ length: size.height, offset: size.height * index, index })}
           onViewableItemsChanged={onViewable}
           viewabilityConfig={{ itemVisiblePercentThreshold: 80 }}
-          windowSize={3}
-          initialNumToRender={2}
-          maxToRenderPerBatch={2}
+          windowSize={5}
+          initialNumToRender={3}
+          maxToRenderPerBatch={3}
           removeClippedSubviews
           onEndReachedThreshold={2}
           onEndReached={() => void loadMore()}

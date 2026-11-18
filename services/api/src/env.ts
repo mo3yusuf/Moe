@@ -26,6 +26,12 @@ const EnvSchema = z.object({
   /** none = pickup only (default). sandbox = TEST/DEV ONLY fake partner, refused in production. */
   DELIVERY_PROVIDER: z.enum(['none', 'sandbox']).default('none'),
   DELIVERY_WEBHOOK_SECRET: z.string().min(16).optional(),
+  /** Transactional email via Resend (optional — emails are skipped when unset). */
+  RESEND_API_KEY: z.string().optional().transform((v) => v?.trim() || undefined),
+  /** Sender, e.g. "CRAVE <orders@send.crave.com.au>". Must be on a domain verified in Resend. */
+  EMAIL_FROM: z.string().optional().transform((v) => v?.trim() || undefined),
+  /** Sentry error tracking (optional). */
+  SENTRY_DSN: z.string().optional().transform((v) => v?.trim() || undefined),
   WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
 });
 

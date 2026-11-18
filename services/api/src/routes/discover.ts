@@ -49,6 +49,8 @@ discoverRoutes.get('/menu-items/:id', async (c) => {
   if (!id.success) throw notFound('Menu item');
   const item = await c.get('deps').store.menuItemDetail(id.data);
   if (!item) throw notFound('Menu item');
+  // Same for every viewer; let the phone reuse it for a minute (prices are re-checked at checkout).
+  c.header('Cache-Control', 'private, max-age=60');
   return c.json(item);
 });
 

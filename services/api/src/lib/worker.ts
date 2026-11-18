@@ -1,19 +1,21 @@
 import type { PaymentProvider } from './payments';
 import type { DataStore } from './store';
 import type { DeliveryProvider } from './delivery';
+import { runEmailJobs, type EmailLinks, type EmailOutbox, type EmailSender } from './email';
 
 export interface WorkerResult {
   expired: number; refunds: { succeeded: number; pending: number; failed: number }; deletions: number; fraudFlags: number;
   commissionsApproved: number; creatorPayouts: number; dispatched: number; similarityPairs: number;
+  emails: { sent: number; failed: number; skipped: number };
 }
 
 /**
  * Background jobs, run on an interval by the API process (single instance for the pilot; move to a
  * scheduled job runner when scaling out). Every step is idempotent and safe to re-run.
  */
-export async function runBackgroundJobs(store: DataStore, payments: PaymentProvider | null, opts: { runFraud: boolean; daily?: boolean; delivery?: DeliveryProvider | null; log?: (m: string, e?: unknown) => void } = { runFraud: false }): Promise<WorkerResult> {
+export async function runBackgroundJobs(store: DataStore, payments: PaymentProvider | null, opts: { runFraud: boolean; daily?: boolean; delivery?: DeliveryProvider | null; email?: { outbox: EmailOutbox; sender: EmailSender; links: EmailLinks } | null; log?: (m: string, e?: unknown) => void } = { runFraud: false }): Promise<WorkerResult> {
   const log = opts.log ?? (() => {});
-  const result: WorkerResult = { expired: 0, refunds: { succeeded: 0, pending: 0, failed: 0 }, deletions: 0, fraudFlags: 0, commissionsApproved: 0, creatorPayouts: 0, dispatched: 0, similarityPairs: 0 };
+  const result: WorkerResult = { expired: 0, refunds: { succeeded: 0, pending: 0, failed: 0 }, deletions: 0, fraudFlags: 0, commissionsApproved: 0, creatorPayouts: 0, dispatched: 0, similarityPairs: 0, emails: { sent: 0, failed: 0, skipped: 0 } };
 
   // 1. Cancel unpaid orders (and their Stripe intents) after 30 minutes.
   for (const e of await store.expireUnpaidOrders(30)) {
@@ -68,7 +70,13 @@ export async function runBackgroundJobs(store: DataStore, payments: PaymentProvi
     }
   }
 
-  // 6. Daily: approve creator commissions past the 7-day refund window, pay creators, refresh "similar videos".
+  // 6. Transactional email (new-order alerts, status updates, refunds, receipts). Isolated so an email
+  //    outage never blocks the money-moving steps above.
+  if (opts.email) {
+    try { result.emails = await runEmailJobs(opts.email.outbox, opts.email.sender, opts.email.links, log); } catch (err) { log('email jobs failed', err); }
+  }
+
+  // 7. Daily: approve creator commissions past the 7-day refund window, pay creators, refresh "similar videos".
   if (opts.daily) {
     result.commissionsApproved = await store.approveDueCommissions(7);
     if (payments) {

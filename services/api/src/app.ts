@@ -34,6 +34,10 @@ export interface AppDeps {
   /** Set false in tests that exercise many requests. */
   rateLimits?: boolean;
   corsOrigins: string[];
+  /** Deep health check (database reachable); used by GET /health/ready. */
+  healthCheck?: () => Promise<boolean>;
+  /** Crash reporting for unexpected (500) errors, e.g. Sentry. */
+  reportError?: (err: unknown, context?: Record<string, unknown>) => void;
   /** Mux streaming; null = videos are served from Supabase Storage as uploaded. */
   mux?: MuxClient | null;
   now?: () => Date;
@@ -53,7 +57,14 @@ export function createApp(deps: AppDeps) {
   app.route('/webhooks', webhookRoutes);
   app.route('/webhooks', muxWebhookRoutes);
 
+  // Liveness: the process is up (Render's health check — cheap, no database call).
   app.get('/health', (c) => c.json({ ok: true, service: 'crave-api', time: (deps.now?.() ?? new Date()).toISOString() }));
+  // Readiness: the database answers too (for uptime monitors). 503 when it doesn't.
+  app.get('/health/ready', async (c) => {
+    const started = Date.now();
+    const db = deps.healthCheck ? await deps.healthCheck().catch(() => false) : true;
+    return c.json({ ok: db, database: db ? 'ok' : 'unreachable', latencyMs: Date.now() - started }, db ? 200 : 503);
+  });
 
   // Everything under /v1 requires a valid Supabase access token.
   app.use('/v1/*', async (c, next) => {
@@ -97,6 +108,7 @@ export function createApp(deps: AppDeps) {
     if (err instanceof HTTPException) return c.json({ error: { code: 'http_error', message: err.message } }, err.status);
     // Do not leak internals to clients.
     console.error('[crave-api] unhandled error', err);
+    deps.reportError?.(err, { method: c.req.method, route: c.req.routePath });
     return c.json({ error: { code: 'internal', message: 'Something went wrong' } }, 500);
   });
 

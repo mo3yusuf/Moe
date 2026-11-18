@@ -51,11 +51,14 @@ export default function MyVideos() {
     const [v, c] = await Promise.all([
       supabase.from('videos').select('id, caption, status, moderation_notes, created_at, video_stats(impressions, views_3s, likes, right_swipes, shares), video_menu_items(status, menu_items(name))')
         .eq('uploader_id', uid).order('created_at', { ascending: false }),
-      supabase.from('creators').select('handle, affiliate_status, is_verified').eq('user_id', uid).maybeSingle(),
+      supabase.from('creators').select('handle, is_verified').eq('user_id', uid).maybeSingle(),
     ]);
+    // Affiliate status is private: read through creators_private (own row only).
+    const priv = c.data ? (await supabase.rpc('creators_private', { p_ids: [uid] })).data?.[0] : null;
+    const creatorRow = c.data ? { ...c.data, affiliate_status: priv?.affiliate_status ?? 'none' } : null;
     setVideos((v.data as unknown as V[]) ?? []);
-    setCreator(c.data ?? null);
-    if (c.data?.affiliate_status === 'approved') api<typeof earnings>('/v1/creators/me/earnings').then(setEarnings).catch(() => {});
+    setCreator(creatorRow);
+    if (creatorRow?.affiliate_status === 'approved') api<typeof earnings>('/v1/creators/me/earnings').then(setEarnings).catch(() => {});
   }
   useEffect(() => { void load(); }, [uid]);
 

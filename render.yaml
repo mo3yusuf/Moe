@@ -7,9 +7,11 @@ services:
   - type: web
     name: crave-api
     runtime: node
-    plan: free
+    plan: starter              # always on (free instances sleep); keep in sync with the dashboard
     region: singapore          # closest Render region to Brisbane
     buildCommand: npm ci --include=dev
+    # Database migrations run before each new version goes live; a failure stops the deploy.
+    preDeployCommand: node scripts/migrate.mjs
     startCommand: npm run start -w @crave/api
     healthCheckPath: /health
     envVars:
@@ -23,6 +25,8 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY     # secret — server only
         sync: false
+      - key: DATABASE_URL                  # secret — Supabase Session pooler connection string (for migrations)
+        sync: false
       - key: PAYMENTS_MODE
         value: disabled                    # engagement pilot: no ordering yet
       - key: DELIVERY_PROVIDER
@@ -33,6 +37,14 @@ services:
       - key: MUX_TOKEN_SECRET               # secret
         sync: false
       - key: MUX_WEBHOOK_SECRET             # secret
+        sync: false
+      # Order emails (resend.com). Leave empty to turn emails off.
+      - key: RESEND_API_KEY                 # secret
+        sync: false
+      - key: EMAIL_FROM                     # e.g. CRAVE <orders@yourdomain.com.au> — must be a domain verified in Resend
+        sync: false
+      # Crash reporting (sentry.io, "Node" project). Leave empty to turn it off.
+      - key: SENTRY_DSN
         sync: false
       - key: CORS_ORIGINS
         value: http://localhost:8081
@@ -54,6 +66,7 @@ services:
       EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
       EXPO_PUBLIC_API_URL=$API_HOST
       EXPO_PUBLIC_ORDERING_ENABLED=false
+      EXPO_PUBLIC_SENTRY_DSN=$SENTRY_DSN
       EXPO_OFFLINE=1 npx expo export --platform web --output-dir dist
     staticPublishPath: ./apps/mobile/dist
     routes:
@@ -73,6 +86,8 @@ services:
         sync: false
       - key: API_HOST
         fromService: { type: web, name: crave-api, property: host }
+      - key: SENTRY_DSN                    # crash reporting (sentry.io, "React" project); optional, public by design
+        sync: false
 
   # Restaurant & admin dashboard (approve videos here)
   - type: web
@@ -83,6 +98,7 @@ services:
     buildCommand: >-
       npm ci --include=dev &&
       NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+      NEXT_PUBLIC_SENTRY_DSN=$SENTRY_DSN
       NEXT_TELEMETRY_DISABLED=1 npm run build -w @crave/web
     startCommand: >-
       NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
@@ -98,3 +114,5 @@ services:
         sync: false
       - key: CRAVE_API_URL
         fromService: { type: web, name: crave-api, property: host }
+      - key: SENTRY_DSN                    # crash reporting (sentry.io, "Next.js" project); optional
+        sync: false

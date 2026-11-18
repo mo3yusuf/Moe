@@ -4,11 +4,15 @@ import { setCommission, setDefaultCommission, setServiceFee } from '../actions';
 
 export default async function Commission() {
   const supabase = await supabaseServer();
-  const [{ data: restaurants }, { data: settings }, { data: history }] = await Promise.all([
-    supabase.from('restaurants').select('id, name, status, commission_rate_bps').order('name'),
+  const [{ data: list }, { data: settings }, { data: history }] = await Promise.all([
+    supabase.from('restaurants').select('id, name, status').order('name'),
     supabase.from('platform_settings').select('key, value').in('key', ['default_commission_bps', 'service_fee']),
     supabase.from('audit_log').select('created_at, action, entity_id, details').in('action', ['commission_changed', 'setting_changed']).order('created_at', { ascending: false }).limit(20),
   ]);
+  // Commission is a private field: admins read it through restaurants_private.
+  const { data: priv } = list?.length ? await supabase.rpc('restaurants_private', { p_ids: list.map((r) => r.id) }) : { data: [] };
+  const rate = new Map(((priv ?? []) as { id: string; commission_rate_bps: number }[]).map((p) => [p.id, p.commission_rate_bps]));
+  const restaurants = (list ?? []).map((r) => ({ ...r, commission_rate_bps: rate.get(r.id) ?? 0 }));
   const def = Number(settings?.find((s) => s.key === 'default_commission_bps')?.value ?? 1000);
   const fee = parseServiceFeeConfig(settings?.find((s) => s.key === 'service_fee')?.value);
   return (

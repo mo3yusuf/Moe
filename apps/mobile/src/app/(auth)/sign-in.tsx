@@ -33,6 +33,9 @@ export default function SignIn() {
         {error ? <Notice tone="danger">{error}</Notice> : null}
         <Button title="Sign in" onPress={submit} loading={busy} disabled={!email || !password} />
         <View style={{ alignItems: 'center' }}>
+          <Link href="/forgot-password"><T muted>Forgot your password?</T></Link>
+        </View>
+        <View style={{ alignItems: 'center' }}>
           <Link href="/sign-up"><T muted>New to CRAVE? <T style={{ color: colors.accent }}>Create an account</T></T></Link>
         </View>
       </KeyboardAvoidingView>
