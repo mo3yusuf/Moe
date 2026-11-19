@@ -1280,3 +1280,11 @@ test('email outbox: receipts and alerts are claimed once, leased for retry, and 
     assert.ok((await expectDenied(c, 'select public.receipt_outbox_done(array[$1::uuid])', [order.id])).error);
   }
 }));
+
+test('performance: row-level security policies evaluate auth.uid() once per query, not per row', async () => {
+  const { rows } = await pool.query(`
+    select tablename, policyname from pg_policies
+    where schemaname = 'public'
+      and (coalesce(qual, '') || ' ' || coalesce(with_check, '')) ~* '(?<!select )auth\\.uid\\(\\)'`);
+  assert.deepEqual(rows, []);
+});
