@@ -107,10 +107,24 @@ test('users can only read their own full profile; public_profiles exposes displa
   const a = await createUser(c, 'a@example.com', { display_name: 'A' });
   const b = await createUser(c, 'b@example.com', { display_name: 'B' });
   await as(c, a);
-  assert.equal((await c.query('select * from public.profiles where id = $1', [b])).rowCount, 0);
-  assert.equal((await c.query('select * from public.profiles where id = $1', [a])).rowCount, 1);
+  // Other people's private fields are never readable; only the public display columns.
+  for (const col of ['taste_reset_at', 'home_city_id', 'onboarding_completed_at']) {
+    assert.ok((await expectDenied(c, `select ${col} from public.profiles where id = $1`, [b])).error, `profiles.${col} hidden`);
+  }
+  assert.ok((await expectDenied(c, 'select * from public.profiles where id = $1', [b])).error, 'select * is refused');
+  // Your own full profile, through my_profile().
+  const mine = (await c.query('select * from public.my_profile()')).rows;
+  assert.deepEqual(mine.map((r) => [r.id, r.display_name]), [[a, 'A']]);
+  assert.ok('taste_reset_at' in mine[0]);
   const pub = await c.query('select * from public.public_profiles where id = $1', [b]);
   assert.deepEqual(Object.keys(pub.rows[0]).sort(), ['avatar_url', 'bio', 'display_name', 'id', 'username']);
+  // Accounts being deleted disappear from public view; the view is not SECURITY DEFINER any more.
+  await asSuperuser(c);
+  await c.query('update public.profiles set deletion_requested_at = now() where id = $1', [b]);
+  assert.equal((await c.query(`select reloptions from pg_class where oid = 'public.public_profiles'::regclass`)).rows[0].reloptions?.includes('security_invoker=true'), true);
+  await as(c, 'anon');
+  assert.equal((await c.query('select count(*)::int n from public.public_profiles where id = $1', [b])).rows[0].n, 0);
+  assert.equal((await c.query('select count(*)::int n from public.public_profiles where id = $1', [a])).rows[0].n, 1);
 }));
 
 test('restaurant onboarding: creator becomes owner; status and commission are protected', () => tx(async (c) => {
@@ -335,7 +349,7 @@ test('Reset My Taste Profile deletes behavioural signals but keeps orders', () =
   assert.equal((await c.query('select 1 from public.user_feature_affinities')).rowCount, 0);
   assert.equal((await c.query('select 1 from public.saved_meals')).rowCount, 1, 'cravings kept unless requested');
   assert.equal((await c.query('select 1 from public.orders where id = $1', [oid])).rowCount, 1, 'orders retained');
-  assert.ok((await c.query('select taste_reset_at from public.profiles where id = $1', [u])).rows[0].taste_reset_at);
+  assert.ok((await c.query('select taste_reset_at from public.my_profile() where id = $1', [u])).rows[0].taste_reset_at);
 
   await c.query('select public.reset_taste_profile(true, true)');
   assert.equal((await c.query('select 1 from public.saved_meals')).rowCount, 0);
