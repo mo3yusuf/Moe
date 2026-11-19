@@ -73,12 +73,16 @@ export default function ForYou() {
     const meta = { menuItemId: item.menuItem?.id ?? null, feedRequestId: item.feedRequestId };
     track(watchSession.swipe(item.videoId, direction, method, meta));
     patch(item.videoId, { craved: direction === 'right' });
-    // CRAVE IT = order it: when the dish can be ordered, a right swipe goes straight to its order
-    // screen (the customer still confirms there, so a swipe never charges anyone by itself).
-    if (direction === 'right' && !config.demoMode && config.orderingEnabled && item.menuItem && item.orderable) {
-      track({ kind: 'interaction', eventType: 'order_click', videoId: item.videoId, menuItemId: item.menuItem.id, feedRequestId: item.feedRequestId });
-      const menuItemId = item.menuItem.id;
-      setTimeout(() => router.push({ pathname: '/item/[id]', params: { id: menuItemId, video: item.videoId } }), 650);
+    // CRAVE IT = order it: a right swipe opens that dish's order screen (options, quantity, add to
+    // basket), or the restaurant's menu when the video isn't linked to one dish. The customer still
+    // confirms and pays there, so a swipe never charges anyone by itself. While online ordering is
+    // switched off the screen still opens; its button says ordering is coming soon.
+    if (direction === 'right' && !config.demoMode) {
+      const target = craveTarget(item);
+      if (target) {
+        if (item.menuItem) track({ kind: 'interaction', eventType: 'order_click', videoId: item.videoId, menuItemId: item.menuItem.id, feedRequestId: item.feedRequestId });
+        setTimeout(() => router.push(target), 650);
+      }
     }
     if (direction === 'left') {
       // Not for me: move on so the user isn't left looking at it.
@@ -260,3 +264,10 @@ const styles = StyleSheet.create({
   srNav: { position: 'absolute', right: space.sm, top: 80, gap: space.sm },
   srBtn: { width: HIT, height: HIT, borderRadius: HIT / 2, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center' },
 });
+
+/** Where a "Crave it" swipe takes you: the dish's order screen, else the restaurant's menu. */
+function craveTarget(item: FeedEntry) {
+  if (item.menuItem) return { pathname: '/item/[id]' as const, params: { id: item.menuItem.id, video: item.videoId } };
+  if (item.restaurant) return { pathname: '/restaurant/[id]' as const, params: { id: item.restaurant.id } };
+  return null;
+}
