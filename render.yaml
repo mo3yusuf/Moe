@@ -28,8 +28,16 @@ services:
         sync: false
       - key: DATABASE_URL                  # secret — Supabase Session pooler connection string (for migrations)
         sync: false
+      # Ordering switch: disabled = "coming soon"; stripe = live card payments (needs the 3 keys below).
+      # The app reads this from the API (GET /app-config), so no app rebuild is needed to switch.
       - key: PAYMENTS_MODE
-        value: disabled                    # engagement pilot: no ordering yet
+        value: disabled
+      - key: STRIPE_SECRET_KEY              # secret — sk_test_... (test) or sk_live_...
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY         # pk_test_... / pk_live_... (public by design)
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRETS         # secret — whsec_... for both webhook endpoints, comma-separated
+        sync: false
       - key: DELIVERY_PROVIDER
         value: none
       # Optional video streaming (mux.com). Set all three to turn it on; leave empty to use Supabase Storage.

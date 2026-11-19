@@ -217,6 +217,19 @@ describe('hardening', () => {
     const base = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON_KEY: 'a'.repeat(30), SUPABASE_SERVICE_ROLE_KEY: 'b'.repeat(30) };
     expect(() => loadEnv({ ...base, PAYMENTS_MODE: 'stripe' })).toThrow(/requires STRIPE_SECRET_KEY/);
     expect(() => loadEnv({ ...base, PAYMENTS_MODE: 'stripe', STRIPE_SECRET_KEY: 'pk_test_wrong', STRIPE_WEBHOOK_SECRETS: 'whsec_x' })).toThrow();
-    expect(loadEnv({ ...base, PAYMENTS_MODE: 'stripe', STRIPE_SECRET_KEY: 'sk_test_abc', STRIPE_WEBHOOK_SECRETS: 'whsec_x' }).PAYMENTS_MODE).toBe('stripe');
+    expect(() => loadEnv({ ...base, PAYMENTS_MODE: 'stripe', STRIPE_SECRET_KEY: 'sk_test_abc', STRIPE_WEBHOOK_SECRETS: 'whsec_x' })).toThrow(/STRIPE_PUBLISHABLE_KEY/);
+    expect(() => loadEnv({ ...base, PAYMENTS_MODE: 'stripe', STRIPE_SECRET_KEY: 'sk_live_abc', STRIPE_PUBLISHABLE_KEY: 'pk_test_abc', STRIPE_WEBHOOK_SECRETS: 'whsec_x' })).toThrow(/both be test keys/);
+    expect(() => loadEnv({ ...base, STRIPE_PUBLISHABLE_KEY: 'sk_test_oops' })).toThrow();
+    expect(loadEnv({ ...base, PAYMENTS_MODE: 'stripe', STRIPE_SECRET_KEY: 'sk_test_abc', STRIPE_PUBLISHABLE_KEY: 'pk_test_abc', STRIPE_WEBHOOK_SECRETS: 'whsec_x' }).PAYMENTS_MODE).toBe('stripe');
+  });
+
+  it('/app-config tells the app whether ordering is on, without sign-in', async () => {
+    const off = await (await makeApp({}, { paymentsMode: 'disabled' }).request('/app-config')).json();
+    expect(off).toEqual({ orderingEnabled: false, paymentsMode: 'disabled', stripePublishableKey: null });
+    const on = await (await makeApp({}, { paymentsMode: 'stripe', payments: { name: 'stripe', testMode: true } as unknown as PaymentProvider, stripePublishableKey: 'pk_test_123' }).request('/app-config')).json();
+    expect(on).toEqual({ orderingEnabled: true, paymentsMode: 'stripe', stripePublishableKey: 'pk_test_123' });
+    // Stripe mode without a working provider or key never tells the app to take orders.
+    const half = await (await makeApp({}, { paymentsMode: 'stripe', payments: null, stripePublishableKey: 'pk_test_123' }).request('/app-config')).json();
+    expect(half).toMatchObject({ orderingEnabled: false, stripePublishableKey: null });
   });
 });

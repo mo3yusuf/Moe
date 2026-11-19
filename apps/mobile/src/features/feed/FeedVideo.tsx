@@ -62,7 +62,8 @@ function FeedVideoBase(props: FeedVideoProps) {
   const { item, width, height, isActive, preload, focused, bottomInset, orderingEnabled } = props;
   const shouldLoad = isActive || preload;
   const soundOn = useSoundOn();
-  const canOrder = orderingEnabled && !!item.menuItem && item.orderable;
+  /** A right swipe opens the dish (or the restaurant's menu); see onSwipe in the feed screen. */
+  const opensOrder = !!item.menuItem || !!item.restaurant;
   const player = useVideoPlayer(shouldLoad ? { uri: item.playbackUrl, useCaching: true } : null, (p) => {
     p.loop = true;
     p.muted = !soundOn; // browsers block autoplay with sound
@@ -263,9 +264,11 @@ function FeedVideoBase(props: FeedVideoProps) {
       {stamp ? (
         <View style={styles.center} pointerEvents="none" accessibilityLiveRegion="polite">
           <View style={[styles.stamp, stamp === 'right' ? styles.stampCrave : styles.stampPass]}>
-            <Text style={[font.title, { color: colors.text }]}>{stamp === 'right' ? (canOrder ? 'Let’s order it!' : 'Craved!') : 'Not for me'}</Text>
+            <Text style={[font.title, { color: colors.text }]}>{stamp === 'right' ? (opensOrder ? 'Let’s order it!' : 'Craved!') : 'Not for me'}</Text>
             <Text style={[font.small, { color: colors.text }]}>
-              {stamp === 'right' ? (canOrder ? 'Opening your order…' : 'Saved to your Cravings — order it when it’s available') : 'We’ll show fewer like this'}
+              {stamp === 'right'
+                ? (item.menuItem ? 'Opening your order…' : item.restaurant ? 'Opening the menu…' : 'Saved to your Cravings')
+                : 'We’ll show fewer like this'}
             </Text>
           </View>
         </View>
