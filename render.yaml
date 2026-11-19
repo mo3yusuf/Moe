@@ -10,7 +10,8 @@ services:
     plan: starter              # always on (free instances sleep); keep in sync with the dashboard
     region: singapore          # closest Render region to Brisbane
     buildCommand: npm ci --include=dev
-    # Database migrations run before each new version goes live; a failure stops the deploy.
+    # Database migrations run before each new version goes live (here on paid plans, and again in the
+    # API start script, which also covers the free plan). A failure stops the new version going live.
     preDeployCommand: node scripts/migrate.mjs
     startCommand: npm run start -w @crave/api
     healthCheckPath: /health

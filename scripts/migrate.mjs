@@ -5,7 +5,8 @@
  * every crave-api deploy (Render pre-deploy command) — no more pasting SQL into the editor.
  *
  * Env: DATABASE_URL — the Supabase "Session pooler" connection string (Project Settings → Database).
- * Options: --dry-run (list pending, change nothing), --seed-reference (also load reference.sql once).
+ * Options: --dry-run (list pending, change nothing), --seed-reference (also load reference.sql once),
+ *          --if-configured (skip quietly when DATABASE_URL is unset; used by the API start script).
  *
  * Safety: an advisory lock stops two deploys migrating at once; a failed migration rolls back and
  * stops the deploy, so the old version keeps serving. Migrations that were applied by hand before
@@ -20,7 +21,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dir = join(root, 'supabase/migrations');
 const dry = process.argv.includes('--dry-run');
 const url = process.env.DATABASE_URL;
-if (!url) { console.error('DATABASE_URL is not set (Supabase → Project Settings → Database → Session pooler connection string).'); process.exit(1); }
+if (!url) {
+  // --if-configured: used when the API starts (works on Render's free plan, which has no pre-deploy
+  // step). Local development without DATABASE_URL just skips migrations.
+  if (process.argv.includes('--if-configured')) { console.log('[migrate] DATABASE_URL not set — skipping migrations'); process.exit(0); }
+  console.error('DATABASE_URL is not set (Supabase → Project Settings → Database → Session pooler connection string).'); process.exit(1);
+}
 
 /** Migrations that were pasted into the SQL editor before automatic migrations existed. */
 const ALREADY_APPLIED_PROBES = {
