@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { titleCase } from '@crave/core';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, TextInput, View } from 'react-native';
 import { Card, DemoBanner, Screen, SkeletonList, T } from '@/components/ui';
@@ -17,7 +17,10 @@ interface R {
 
 export default function Discover() {
   const router = useRouter();
-  const [q, setQ] = useState('');
+  // Opened from a "Crave it" swipe on a video with no restaurant tagged: start from its hashtag.
+  const { q: fromSwipe } = useLocalSearchParams<{ q?: string }>();
+  const [q, setQ] = useState(fromSwipe ?? '');
+  useEffect(() => { if (fromSwipe) setQ(fromSwipe); }, [fromSwipe]);
   const [loc, setLoc] = useState<Coarse | null>(null);
   const [items, setItems] = useState<R[] | null>(null);
   const [error, setError] = useState<string | null>(null);
