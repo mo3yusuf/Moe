@@ -14,6 +14,8 @@ const EnvSchema = z.object({
   /** simulated = development-only fake payment step; stripe = Phase 7; disabled = checkout off. */
   PAYMENTS_MODE: z.enum(['disabled', 'simulated', 'stripe']).default('disabled'),
   STRIPE_SECRET_KEY: z.string().regex(/^(sk|rk)_(test|live)_/).optional(),
+  /** Publishable key (pk_test_... / pk_live_...). Public by design; served to the app at /app-config. */
+  STRIPE_PUBLISHABLE_KEY: z.string().optional().transform((v) => v?.trim() || undefined).pipe(z.string().regex(/^pk_(test|live)_/).optional()),
   /** Comma-separated: platform endpoint secret and Connect endpoint secret. */
   STRIPE_WEBHOOK_SECRETS: z.string().optional(),
   /** true = restaurant is the settlement merchant (on_behalf_of). Confirm with legal/accounting. */
@@ -49,8 +51,13 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
   if (parsed.data.NODE_ENV === 'production' && parsed.data.DELIVERY_PROVIDER === 'sandbox') {
     throw new Error('DELIVERY_PROVIDER=sandbox is not allowed in production');
   }
-  if (parsed.data.PAYMENTS_MODE === 'stripe' && (!parsed.data.STRIPE_SECRET_KEY || !parsed.data.STRIPE_WEBHOOK_SECRETS)) {
-    throw new Error('PAYMENTS_MODE=stripe requires STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRETS');
+  if (parsed.data.PAYMENTS_MODE === 'stripe' && (!parsed.data.STRIPE_SECRET_KEY || !parsed.data.STRIPE_WEBHOOK_SECRETS || !parsed.data.STRIPE_PUBLISHABLE_KEY)) {
+    throw new Error('PAYMENTS_MODE=stripe requires STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY and STRIPE_WEBHOOK_SECRETS');
+  }
+  const secretLive = parsed.data.STRIPE_SECRET_KEY?.includes('_live_');
+  const publicLive = parsed.data.STRIPE_PUBLISHABLE_KEY?.includes('_live_');
+  if (parsed.data.STRIPE_SECRET_KEY && parsed.data.STRIPE_PUBLISHABLE_KEY && secretLive !== publicLive) {
+    throw new Error('STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY must both be test keys or both be live keys');
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
     console.warn('[crave-api] WARNING: production NODE_ENV with a Stripe TEST key — payments are simulated.');

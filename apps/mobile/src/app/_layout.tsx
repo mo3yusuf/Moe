@@ -6,7 +6,7 @@ import { Pressable, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StripeProvider } from '@/lib/stripe';
-import { config } from '@/lib/config';
+import { config, loadRuntimeConfig } from '@/lib/config';
 import { capturePendingMatch } from '@/lib/pending-match';
 import { initSentry, reportError } from '@/lib/sentry';
 import { prefetchFeed } from '@/features/feed/use-feed';
@@ -16,6 +16,7 @@ import { colors } from '@/theme/tokens';
 SplashScreen.preventAutoHideAsync();
 capturePendingMatch();
 initSentry();
+void loadRuntimeConfig(); // is ordering switched on? (background; never delays start-up)
 
 const navTheme = {
   ...DarkTheme,

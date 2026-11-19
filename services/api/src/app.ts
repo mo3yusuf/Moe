@@ -38,6 +38,8 @@ export interface AppDeps {
   healthCheck?: () => Promise<boolean>;
   /** Crash reporting for unexpected (500) errors, e.g. Sentry. */
   reportError?: (err: unknown, context?: Record<string, unknown>) => void;
+  /** Stripe publishable key (pk_...), public by design; the app reads it from GET /app-config. */
+  stripePublishableKey?: string | null;
   /** Mux streaming; null = videos are served from Supabase Storage as uploaded. */
   mux?: MuxClient | null;
   now?: () => Date;
@@ -64,6 +66,18 @@ export function createApp(deps: AppDeps) {
     const started = Date.now();
     const db = deps.healthCheck ? await deps.healthCheck().catch(() => false) : true;
     return c.json({ ok: db, database: db ? 'ok' : 'unreachable', latencyMs: Date.now() - started }, db ? 200 : 503);
+  });
+
+  // Public app settings, so ordering is switched on/off in one place (this API's environment) instead
+  // of rebuilding the app. Nothing secret here: the publishable key is designed to be public.
+  app.get('/app-config', (c) => {
+    c.header('Cache-Control', 'public, max-age=60');
+    const stripeReady = deps.paymentsMode === 'stripe' && !!deps.payments && !!deps.stripePublishableKey;
+    return c.json({
+      orderingEnabled: stripeReady || deps.paymentsMode === 'simulated',
+      paymentsMode: deps.paymentsMode,
+      stripePublishableKey: stripeReady ? deps.stripePublishableKey : null,
+    });
   });
 
   // Everything under /v1 requires a valid Supabase access token.
