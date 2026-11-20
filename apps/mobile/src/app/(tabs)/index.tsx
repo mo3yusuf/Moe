@@ -265,9 +265,13 @@ const styles = StyleSheet.create({
   srBtn: { width: HIT, height: HIT, borderRadius: HIT / 2, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center' },
 });
 
-/** Where a "Crave it" swipe takes you: the dish's order screen, else the restaurant's menu. */
+/**
+ * Where a "Crave it" swipe takes you: the dish's order screen, else the restaurant's menu, else (no
+ * restaurant tagged) Search, so the customer can find somewhere nearby that makes it.
+ */
 function craveTarget(item: FeedEntry) {
   if (item.menuItem) return { pathname: '/item/[id]' as const, params: { id: item.menuItem.id, video: item.videoId } };
   if (item.restaurant) return { pathname: '/restaurant/[id]' as const, params: { id: item.restaurant.id } };
-  return null;
+  const tag = item.caption?.match(/#([\p{L}\p{N}_]+)/u)?.[1];
+  return { pathname: '/discover' as const, params: tag ? { q: tag.replace(/_/g, ' ') } : {} };
 }

@@ -267,7 +267,7 @@ function FeedVideoBase(props: FeedVideoProps) {
             <Text style={[font.title, { color: colors.text }]}>{stamp === 'right' ? (opensOrder ? 'Let’s order it!' : 'Craved!') : 'Not for me'}</Text>
             <Text style={[font.small, { color: colors.text }]}>
               {stamp === 'right'
-                ? (item.menuItem ? 'Opening your order…' : item.restaurant ? 'Opening the menu…' : 'Saved to your Cravings')
+                ? (item.menuItem ? 'Opening your order…' : item.restaurant ? 'Opening the menu…' : 'Let’s find it near you…')
                 : 'We’ll show fewer like this'}
             </Text>
           </View>
