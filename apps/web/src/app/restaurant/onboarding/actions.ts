@@ -54,5 +54,5 @@ export async function createRestaurant(_prev: OnboardState | undefined, form: Fo
     Array.from({ length: 7 }, (_, d) => ({ location_id: loc.id, day_of_week: d, opens_at: '11:00', closes_at: '21:00' })));
   await supabase.from('menus').insert({ restaurant_id: restaurantId, name: 'Main menu' });
 
-  redirect(`/restaurant/${restaurantId}`);
+  redirect(`/restaurant/${restaurantId}/setup?step=hours`);
 }

@@ -1,4 +1,5 @@
 import { formatMoney } from '@crave/core';
+import Link from 'next/link';
 import { loadMemberRestaurant } from '@/lib/restaurant';
 import { openDashboard, startOnboarding } from './actions';
 
@@ -18,6 +19,7 @@ export default async function Payouts({ params, searchParams }: { params: Promis
           Stripe will ask for your business details and bank account — CRAVE never sees your bank details.
         </p>
         {sp.done && !restaurant.payouts_enabled ? <p className="notice">Thanks — Stripe is reviewing your details. This page updates automatically when it’s approved.</p> : null}
+        {sp.done && restaurant.status !== 'verified' ? <div><Link className="btn" href={`/restaurant/${id}/setup?step=verify`}>Continue setting up your store →</Link></div> : null}
         {sp.refresh ? <p className="notice">Your Stripe link expired. Continue below.</p> : null}
         <div className="row">
           <span className={`badge ${restaurant.payouts_enabled ? 'ok' : 'warn'}`}>{restaurant.payouts_enabled ? 'Ready to take card orders' : connected ? 'Stripe setup incomplete' : 'Not connected'}</span>

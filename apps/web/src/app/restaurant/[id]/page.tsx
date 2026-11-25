@@ -22,7 +22,10 @@ export default async function RestaurantOverview({ params }: { params: Promise<{
   return (
     <div className="stack">
       {restaurant.status !== 'verified' ? (
-        <div className="notice">Customers can’t see {restaurant.name} until CRAVE verifies it. Complete the checklist below.</div>
+        <div className="notice row" style={{ justifyContent: 'space-between' }}>
+          <span>Customers can’t see {restaurant.name} until your store setup is finished and CRAVE approves it.</span>
+          <Link className="btn" href={`/restaurant/${id}/setup`}>Finish setup →</Link>
+        </div>
       ) : null}
       <div className="grid">
         <div className="card"><div className="muted">Menu items</div><div style={{ fontSize: 30, fontWeight: 800 }}>{menu.length}</div><div className="muted">{menu.filter((m) => !m.is_available).length} unavailable</div></div>

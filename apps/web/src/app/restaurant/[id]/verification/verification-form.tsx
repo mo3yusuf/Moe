@@ -1,4 +1,5 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/browser';
 import { submitVerification } from './actions';
@@ -8,6 +9,7 @@ export function VerificationForm({ restaurantId }: { restaurantId: string }) {
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const router = useRouter();
 
   async function submit() {
     setBusy(true);
@@ -26,6 +28,7 @@ export function VerificationForm({ restaurantId }: { restaurantId: string }) {
     const res = await submitVerification(restaurantId, licence, paths);
     setBusy(false);
     setStatus(res.error ?? 'Submitted. CRAVE will review your documents and email you.');
+    if (!res.error) router.refresh();
   }
 
   return (
