@@ -295,7 +295,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
 
     async menuItemDetail(menuItemId) {
       const { data: m, error } = await admin.from('menu_items')
-        .select('id, restaurant_id, name, description, price_cents, currency, image_url, dietary_tags, allergens, spice_level, is_available, restaurants(name, status, restaurant_locations(id)), is_combo, menu_item_option_groups(id, name, min_select, max_select, sort_order, parent_option_id, display_style, menu_item_options(id, name, price_delta_cents, is_available, sort_order, max_quantity, image_url, linked_menu_item_id))')
+        .select('id, restaurant_id, name, description, price_cents, currency, image_url, dietary_tags, allergens, spice_level, is_available, restaurants(name, status, restaurant_locations(id)), is_combo, menu_item_option_groups!menu_item_option_groups_menu_item_id_fkey(id, name, min_select, max_select, sort_order, parent_option_id, display_style, menu_item_options!menu_item_options_group_id_fkey(id, name, price_delta_cents, is_available, sort_order, max_quantity, image_url, linked_menu_item_id))')
         .eq('id', menuItemId).maybeSingle();
       if (error) throw new Error(`menu item: ${error.message}`);
       const rest: any = (m as any)?.restaurants;
@@ -401,7 +401,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       const out = new Map();
       if (!ids.length) return out;
       const { data, error } = await admin.from('menu_items')
-        .select('id, name, price_cents, is_available, gst_applicable, is_combo, restaurant_id, restaurants(name, status, commission_rate_bps, accepts_advance_orders, restaurant_locations(id)), menu_item_option_groups(id, name, min_select, max_select, sort_order, parent_option_id, display_style, menu_item_options(id, name, price_delta_cents, is_available, sort_order, max_quantity, image_url, linked_menu_item_id))')
+        .select('id, name, price_cents, is_available, gst_applicable, is_combo, restaurant_id, restaurants(name, status, commission_rate_bps, accepts_advance_orders, restaurant_locations(id)), menu_item_option_groups!menu_item_option_groups_menu_item_id_fkey(id, name, min_select, max_select, sort_order, parent_option_id, display_style, menu_item_options!menu_item_options_group_id_fkey(id, name, price_delta_cents, is_available, sort_order, max_quantity, image_url, linked_menu_item_id))')
         .in('id', ids);
       if (error) throw new Error(`items: ${error.message}`);
       for (const m of (data ?? []) as any[]) {

@@ -121,3 +121,18 @@ nav.side a:hover { background: var(--surface-2); color: var(--text); }
 .addr-list li[role="option"] { padding: 12px 12px; border-radius: 10px; cursor: pointer; line-height: 1.35; font-size: 15px; }
 .addr-list li[role="option"]:hover, .addr-list li.active { background: var(--surface-2); }
 .addr-list .addr-credit { padding: 6px 12px 2px; font-size: 11px; color: var(--faint); text-align: right; }
+/* ---------- Phone layout fixes ---------- */
+.layout > main { min-width: 0; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  nav.side { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+  nav.side::-webkit-scrollbar { display: none; }
+  nav.side a { flex: none; white-space: nowrap; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; font-size: 14px; }
+  nav.side p { display: none; }
+  nav.top .container { gap: 12px; }
+  nav.top .brand { white-space: nowrap; }
+  nav.top .brand .muted { display: none; }
+  nav.top .row { gap: 12px; flex-wrap: nowrap; }
+  nav.top .btn { min-height: 38px; padding: 0 14px; font-size: 14px; }
+}
+html, body { overflow-x: hidden; }

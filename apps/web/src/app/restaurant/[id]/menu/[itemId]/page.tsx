@@ -12,9 +12,10 @@ const STYLE_LABEL: Record<string, string> = { list: 'List', chips: 'Chips', remo
 export default async function ItemPage({ params }: { params: Promise<{ id: string; itemId: string }> }) {
   const { id, itemId } = await params;
   const { supabase } = await loadMemberRestaurant(id);
-  const { data: item } = await supabase.from('menu_items')
-    .select('*, menu_item_option_groups(id, name, min_select, max_select, sort_order, display_style, parent_option_id, menu_item_options(id, name, price_delta_cents, max_quantity, image_url, linked_menu_item_id, sort_order))')
+  const { data: item, error } = await supabase.from('menu_items')
+    .select('*, menu_item_option_groups!menu_item_option_groups_menu_item_id_fkey(id, name, min_select, max_select, sort_order, display_style, parent_option_id, menu_item_options!menu_item_options_group_id_fkey(id, name, price_delta_cents, max_quantity, image_url, linked_menu_item_id, sort_order))')
     .eq('id', itemId).eq('restaurant_id', id).maybeSingle();
+  if (error) throw new Error(`Couldn’t load this dish: ${error.message}`);
   if (!item) notFound();
   const groups = [...(item.menu_item_option_groups ?? [])].sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   const optionName = new Map<string, string>(groups.flatMap((g: any) => (g.menu_item_options ?? []).map((o: any) => [o.id, o.name] as [string, string])));
