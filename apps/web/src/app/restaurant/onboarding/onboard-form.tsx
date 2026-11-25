@@ -29,7 +29,7 @@ export function OnboardForm({ suburbs, cuisines }: { suburbs: string[]; cuisines
       <AddressSearch onChoose={(a) => { setFound(a); setAddress(a.line1); setSuburb(a.suburb); }} />
       {found ? (
         <>
-          <p style={{ margin: 0, color: 'var(--success)', fontSize: 14 }}>✓ {found.formatted} — exact location saved</p>
+          <p style={{ margin: 0, color: 'var(--success)', fontSize: 14 }}>✓ {found.formatted} — {found.approximate ? 'location saved (on your street)' : 'exact location saved'}</p>
           <input type="hidden" name="lat" value={found.lat} /><input type="hidden" name="lng" value={found.lng} />
           <input type="hidden" name="postcode" value={found.postcode} /><input type="hidden" name="state" value={found.state} />
         </>
