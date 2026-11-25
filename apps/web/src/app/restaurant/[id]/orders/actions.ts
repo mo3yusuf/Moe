@@ -30,3 +30,12 @@ export async function setAcceptingOrders(restaurantId: string, locationId: strin
   revalidatePath(`/restaurant/${restaurantId}/hours`);
   return error ? { error: error.message } : {};
 }
+
+/** Busy mode: add extra minutes to prep times for a while (0 = back to normal). */
+export async function setBusyMode(restaurantId: string, locationId: string, extraMinutes: number, forMinutes = 60): Promise<Result> {
+  const supabase = await supabaseServer();
+  const { error } = await supabase.rpc('set_location_busy', { p_location_id: locationId, p_extra_minutes: extraMinutes, p_for_minutes: forMinutes });
+  revalidatePath(`/restaurant/${restaurantId}`);
+  revalidatePath(`/restaurant/${restaurantId}/orders`);
+  return error ? { error: error.message } : {};
+}

@@ -1,6 +1,7 @@
 import { ALLERGENS, CUISINES, DIETARY_TAGS, formatMoney, titleCase } from '@crave/core';
 import Link from 'next/link';
 import { canManage, loadMemberRestaurant } from '@/lib/restaurant';
+import { SETUP_STEPS, setupProgress, type SetupStep } from '@/lib/setup-progress';
 import { saveHours } from '../hours/actions';
 import { HoursForm } from '../hours/hours-form';
 import { addItem } from '../menu/actions';
@@ -13,14 +14,8 @@ import { VerificationForm } from '../verification/verification-form';
  * Every step saves as you go; progress is worked out from what's already in the database, so owners
  * can leave and come back any time.
  */
-type StepKey = 'details' | 'hours' | 'menu' | 'payouts' | 'verify';
-const STEPS: { key: StepKey; label: string }[] = [
-  { key: 'details', label: 'Store details' },
-  { key: 'hours', label: 'Opening hours' },
-  { key: 'menu', label: 'Menu' },
-  { key: 'payouts', label: 'Get paid' },
-  { key: 'verify', label: 'Documents' },
-];
+type StepKey = SetupStep;
+const STEPS = SETUP_STEPS;
 
 export default async function SetupPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ step?: string }> }) {
   const { id } = await params;
@@ -29,19 +24,12 @@ export default async function SetupPage({ params, searchParams }: { params: Prom
   const base = `/restaurant/${id}`;
   if (!canManage(role)) return <div className="card">Only the owner or a manager can set up the store.</div>;
 
-  const [{ data: loc }, { data: items }, { data: verifications }] = await Promise.all([
+  const [{ data: loc }, { data: items }, progress] = await Promise.all([
     supabase.from('restaurant_locations').select('id, suburb, address_line1, location_opening_hours(*)').eq('restaurant_id', id).order('created_at').limit(1).maybeSingle(),
     supabase.from('menu_items').select('id, name, price_cents, section').eq('restaurant_id', id).order('created_at'),
-    supabase.from('restaurant_verifications').select('status, submitted_at').eq('restaurant_id', id).order('submitted_at', { ascending: false }).limit(1),
+    setupProgress(supabase, restaurant),
   ]);
-  const latestVerification = verifications?.[0];
-  const done: Record<StepKey, boolean> = {
-    details: true,
-    hours: (loc?.location_opening_hours?.length ?? 0) > 0,
-    menu: (items?.length ?? 0) > 0,
-    payouts: !!restaurant.payouts_enabled,
-    verify: restaurant.status === 'verified' || (!!latestVerification && !['rejected', 'more_info_required'].includes(latestVerification.status)),
-  };
+  const { done, latestVerification } = progress;
   const doneCount = STEPS.filter((s) => done[s.key]).length;
   const firstTodo = STEPS.find((s) => !done[s.key])?.key;
   const step: StepKey = (STEPS.some((s) => s.key === rawStep) ? rawStep : firstTodo ?? 'verify') as StepKey;

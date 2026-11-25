@@ -9,13 +9,13 @@ export default async function OrdersPage({ params }: { params: Promise<{ id: str
   const [{ data: orders }, { data: loc }] = await Promise.all([
     supabase.from('orders').select(ORDER_COLUMNS)
       .eq('restaurant_id', id).neq('status', 'pending_payment').gte('created_at', since).order('created_at', { ascending: false }),
-    supabase.from('restaurant_locations').select('id, prep_time_minutes, is_accepting_orders').eq('restaurant_id', id).order('created_at').limit(1).maybeSingle(),
+    supabase.from('restaurant_locations').select('id, prep_time_minutes, is_accepting_orders, busy_extra_minutes, busy_until').eq('restaurant_id', id).order('created_at').limit(1).maybeSingle(),
   ]);
   return (
     <OrdersBoard
       restaurantId={id}
       initialOrders={(orders ?? []) as unknown as BoardOrder[]}
-      location={loc ? { id: loc.id, prepMinutes: loc.prep_time_minutes, accepting: loc.is_accepting_orders } : null}
+      location={loc ? { id: loc.id, prepMinutes: loc.prep_time_minutes + (loc.busy_until && new Date(loc.busy_until) > new Date() ? loc.busy_extra_minutes : 0), accepting: loc.is_accepting_orders } : null}
     />
   );
 }

@@ -1308,3 +1308,30 @@ test('merchant accepts with a chosen prep time; only the restaurant team can', (
   await asSuperuser(c);
   assert.equal((await c.query(`select count(*)::int n from public.notifications where user_id = $1 and type = 'order_status' and data ->> 'status' = 'accepted'`, [cust])).rows[0].n, 1, 'customer told it was accepted');
 }));
+
+test('busy mode: team adds minutes for a while, customers see longer prep, outsiders cannot', () => tx(async (c) => {
+  await asSuperuser(c);
+  const loc = (await c.query(`select ${id('l-valley-smash')} as x`)).rows[0].x;
+  const base = (await c.query('select prep_time_minutes p from public.restaurant_locations where id = $1', [loc])).rows[0].p;
+  const stranger = await createUser(c, 'busy-stranger@example.com');
+  await as(c, stranger);
+  assert.equal((await expectDenied(c, 'select public.set_location_busy($1, 20, 60)', [loc])).error?.code, '42501');
+  await as(c, await ownerId(c));
+  assert.equal((await expectDenied(c, 'select public.set_location_busy($1, 90, 60)', [loc])).error?.code, '22023');
+  await c.query('select public.set_location_busy($1, 20, 60)', [loc]);
+  assert.equal((await c.query('select public.location_prep_minutes($1) m', [loc])).rows[0].m, base + 20);
+  // Accepting an order now promises the busier time.
+  const cust = await createUser(c, 'busy-cust@example.com');
+  const order = await paidOrder(c, cust);
+  await as(c, await ownerId(c));
+  const r = (await c.query(`select estimated_ready_at, now() as now from public.restaurant_update_order_status($1, 'accepted')`, [order.id])).rows[0];
+  assert.ok(Math.abs((new Date(r.estimated_ready_at) - new Date(r.now)) / 60000 - (base + 20)) < 0.1);
+  // Expired busy mode no longer counts; 0 ends it.
+  await asSuperuser(c);
+  await c.query(`update public.restaurant_locations set busy_until = now() - interval '1 minute' where id = $1`, [loc]);
+  assert.equal((await c.query('select public.location_prep_minutes($1) m', [loc])).rows[0].m, base);
+  await as(c, await ownerId(c));
+  await c.query('select public.set_location_busy($1, 0)', [loc]);
+  await asSuperuser(c);
+  assert.equal((await c.query('select busy_until from public.restaurant_locations where id = $1', [loc])).rows[0].busy_until, null);
+}));
