@@ -7,13 +7,16 @@ export interface ItemDefaults {
   tags?: string[]; dietary?: string[]; allergens?: string[]; spice?: number | null; gstFree?: boolean; isCombo?: boolean;
 }
 
-export function ItemForm({ action, defaults = {}, cuisines, dietary, allergens, submitLabel }: {
+export function ItemForm({ action, defaults = {}, cuisines, dietary, allergens, submitLabel, hidden }: {
   action: (prev: FormState | undefined, form: FormData) => Promise<FormState>;
   defaults?: ItemDefaults; cuisines: [string, string][]; dietary: [string, string][]; allergens: [string, string][]; submitLabel: string;
+  /** Extra hidden form fields, e.g. { returnTo: 'setup' } from the setup wizard. */
+  hidden?: Record<string, string>;
 }) {
   const [state, formAction, pending] = useActionState(action, undefined);
   return (
-    <form action={formAction} className="stack">
+    <form action={formAction} className="stack" key={state?.ok ?? 'form'}>
+      {Object.entries(hidden ?? {}).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <div className="grid">
         <label>Name<input name="name" defaultValue={defaults.name} required maxLength={120} /></label>
         <label>Price (AUD, GST inclusive)<input name="price" defaultValue={defaults.price} required placeholder="16.90" inputMode="decimal" /></label>

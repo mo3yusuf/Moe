@@ -45,6 +45,10 @@ export async function addItem(restaurantId: string, _p: FormState | undefined, f
   const { data: menu } = await supabase.from('menus').select('id').eq('restaurant_id', restaurantId).order('sort_order').limit(1).maybeSingle();
   const { data, error: dbErr } = await supabase.from('menu_items').insert({ ...row, restaurant_id: restaurantId, menu_id: menu?.id ?? null }).select('id').single();
   if (dbErr || !data) return { error: dbErr?.message ?? 'Could not add item' };
+  if (form.get('returnTo') === 'setup') {
+    revalidatePath(`/restaurant/${restaurantId}/setup`);
+    return { ok: `Added ${row.name}. Add another dish, or continue.` };
+  }
   redirect(`/restaurant/${restaurantId}/menu/${data.id}`);
 }
 

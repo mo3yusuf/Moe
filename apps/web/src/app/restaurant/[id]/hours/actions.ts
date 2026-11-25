@@ -24,6 +24,7 @@ export async function saveHours(restaurantId: string, locationId: string, _p: { 
     if (ins.error) return { error: ins.error.message };
   }
   revalidatePath(`/restaurant/${restaurantId}/hours`);
+  revalidatePath(`/restaurant/${restaurantId}/setup`);
   return { ok: 'Opening hours saved' };
 }
 
@@ -32,6 +33,7 @@ export async function setAccepting(restaurantId: string, locationId: string, acc
   const { error } = await supabase.rpc('set_location_accepting_orders', { p_location_id: locationId, p_accepting: accepting });
   if (error) throw new Error(error.message);
   revalidatePath(`/restaurant/${restaurantId}/hours`);
+  revalidatePath(`/restaurant/${restaurantId}/setup`);
 }
 
 export async function saveSettings(restaurantId: string, locationId: string, form: FormData) {
@@ -47,4 +49,5 @@ export async function saveSettings(restaurantId: string, locationId: string, for
   }).eq('id', locationId);
   await supabase.from('restaurants').update({ accepts_advance_orders: form.get('advance') === 'on' }).eq('id', restaurantId);
   revalidatePath(`/restaurant/${restaurantId}/hours`);
+  revalidatePath(`/restaurant/${restaurantId}/setup`);
 }
