@@ -42,3 +42,33 @@ nav.side a { display: block; padding: 8px 12px; border-radius: 8px; text-decorat
 nav.side a:hover { background: var(--surface-2); color: var(--text); }
 .layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; }
 @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+
+/* ---------- Merchant orders screen ---------- */
+.btn.big { min-height: 56px; font-size: 18px; }
+.start-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(10,10,11,.94); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.board-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
+.dot.on { background: var(--success); box-shadow: 0 0 0 4px rgba(34,197,94,.2); }
+.pill { border: 0; border-radius: 999px; padding: 10px 16px; font-weight: 800; font-size: 15px; cursor: pointer; min-height: 44px; }
+.pill-on { background: rgba(34,197,94,.15); color: var(--success); }
+.pill-off { background: rgba(245,158,11,.18); color: var(--warning); }
+.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
+.board-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.board-col-title { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.count { display: inline-flex; min-width: 28px; height: 28px; padding: 0 8px; border-radius: 999px; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--muted); font-size: 14px; }
+.count.accent { background: var(--accent); color: #fff; }
+.count.ok { background: rgba(34,197,94,.15); color: var(--success); }
+.ocard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ocard-new { border: 2px solid var(--accent); animation: ring 1.2s ease-in-out infinite; }
+@keyframes ring { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,77,46,.0); } 50% { box-shadow: 0 0 0 6px rgba(255,77,46,.25); } }
+@media (prefers-reduced-motion: reduce) { .ocard-new { animation: none; } }
+.ocard .items { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 16px; }
+.ocard .qty { color: var(--accent); font-weight: 900; }
+.item-note { color: var(--warning); font-size: 14px; }
+.prep-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.prep-grid .btn { padding: 0 4px; font-size: 14px; min-height: 52px; }
+.due { font-weight: 800; color: var(--success); }
+.due.late { color: var(--danger); }

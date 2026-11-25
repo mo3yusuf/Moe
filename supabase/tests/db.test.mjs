@@ -1288,3 +1288,23 @@ test('performance: row-level security policies evaluate auth.uid() once per quer
       and (coalesce(qual, '') || ' ' || coalesce(with_check, '')) ~* '(?<!select )auth\\.uid\\(\\)'`);
   assert.deepEqual(rows, []);
 });
+
+test('merchant accepts with a chosen prep time; only the restaurant team can', () => tx(async (c) => {
+  const cust = await createUser(c, 'prep-cust@example.com');
+  const order = await paidOrder(c, cust);
+  const stranger = await createUser(c, 'prep-stranger@example.com');
+  await as(c, stranger);
+  assert.equal((await expectDenied(c, 'select public.restaurant_accept_order($1, 20)', [order.id])).error?.code, '42501', 'outsiders cannot accept');
+  await as(c, cust);
+  assert.equal((await expectDenied(c, 'select public.restaurant_accept_order($1, 20)', [order.id])).error?.code, '42501', 'customers cannot accept');
+  await as(c, await ownerId(c));
+  assert.equal((await expectDenied(c, 'select public.restaurant_accept_order($1, 0)', [order.id])).error?.code, '22023', 'prep time is validated');
+  const accepted = (await c.query('select status, estimated_ready_at, now() as now from public.restaurant_accept_order($1, 25)', [order.id])).rows[0];
+  assert.equal(accepted.status, 'accepted');
+  const mins = (new Date(accepted.estimated_ready_at) - new Date(accepted.now)) / 60000;
+  assert.ok(Math.abs(mins - 25) < 0.1, `ready in 25 min (got ${mins})`);
+  // Accepting twice is refused by the order state machine.
+  assert.equal((await expectDenied(c, 'select public.restaurant_accept_order($1, 10)', [order.id])).error?.code, '55000');
+  await asSuperuser(c);
+  assert.equal((await c.query(`select count(*)::int n from public.notifications where user_id = $1 and type = 'order_status' and data ->> 'status' = 'accepted'`, [cust])).rows[0].n, 1, 'customer told it was accepted');
+}));
