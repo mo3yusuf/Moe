@@ -71,7 +71,7 @@ if (env.WORKER_ENABLED === 'true') {
     try {
       const tick = ticks++;
       const r = await runBackgroundJobs(store, payments, { runFraud: tick % 60 === 0, daily: tick % 1440 === 1, delivery, email, log: (m, e) => { console.error(`[crave-worker] ${m}`, e ?? ''); if (e) reportError?.(e, { job: m }); } });
-      if (r.expired || r.refunds.succeeded || r.refunds.pending || r.refunds.failed || r.deletions || r.fraudFlags || r.creatorPayouts || r.dispatched || r.emails.sent || r.emails.failed) console.log('[crave-worker]', JSON.stringify(r));
+      if (r.expired || r.refunds.succeeded || r.refunds.pending || r.refunds.failed || r.deletions || r.fraudFlags || r.creatorPayouts || r.dispatched || r.emails.sent || r.emails.failed || r.restoredItems) console.log('[crave-worker]', JSON.stringify(r));
     } catch (e) {
       console.error('[crave-worker] run failed', e);
       reportError?.(e, { job: 'worker' });

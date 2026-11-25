@@ -7,6 +7,7 @@ export interface WorkerResult {
   expired: number; refunds: { succeeded: number; pending: number; failed: number }; deletions: number; fraudFlags: number;
   commissionsApproved: number; creatorPayouts: number; dispatched: number; similarityPairs: number;
   emails: { sent: number; failed: number; skipped: number };
+  restoredItems: number;
 }
 
 /**
@@ -15,7 +16,7 @@ export interface WorkerResult {
  */
 export async function runBackgroundJobs(store: DataStore, payments: PaymentProvider | null, opts: { runFraud: boolean; daily?: boolean; delivery?: DeliveryProvider | null; email?: { outbox: EmailOutbox; sender: EmailSender; links: EmailLinks } | null; log?: (m: string, e?: unknown) => void } = { runFraud: false }): Promise<WorkerResult> {
   const log = opts.log ?? (() => {});
-  const result: WorkerResult = { expired: 0, refunds: { succeeded: 0, pending: 0, failed: 0 }, deletions: 0, fraudFlags: 0, commissionsApproved: 0, creatorPayouts: 0, dispatched: 0, similarityPairs: 0, emails: { sent: 0, failed: 0, skipped: 0 } };
+  const result: WorkerResult = { expired: 0, refunds: { succeeded: 0, pending: 0, failed: 0 }, deletions: 0, fraudFlags: 0, commissionsApproved: 0, creatorPayouts: 0, dispatched: 0, similarityPairs: 0, emails: { sent: 0, failed: 0, skipped: 0 }, restoredItems: 0 };
 
   // 1. Cancel unpaid orders (and their Stripe intents) after 30 minutes.
   for (const e of await store.expireUnpaidOrders(30)) {
@@ -47,6 +48,11 @@ export async function runBackgroundJobs(store: DataStore, payments: PaymentProvi
   // 3. Account deletions whose orders are all finished.
   for (const d of await store.deletionRequestsReady(10)) {
     try { await store.deleteUserAccount(d.requestId, d.userId); result.deletions += 1; } catch (err) { log(`deletion ${d.requestId} failed`, err); }
+  }
+
+  // 3b. "Sold out today" dishes come back at the start of the next day.
+  if (store.restoreSoldOutItems) {
+    try { result.restoredItems = await store.restoreSoldOutItems(); } catch (err) { log('restore sold-out items failed', err); }
   }
 
   // 4. Fraud rules (hourly).

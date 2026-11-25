@@ -141,3 +141,12 @@ export async function deleteOptionGroup(restaurantId: string, itemId: string, gr
   await supabase.from('menu_item_option_groups').delete().eq('id', groupId).eq('menu_item_id', itemId);
   revalidatePath(`/restaurant/${restaurantId}/menu/${itemId}`);
 }
+
+/** "Sold out today" (back automatically tomorrow) or "until I turn it back on"; any team member. */
+export async function setSoldOut(restaurantId: string, itemId: string, soldOut: boolean, untilTomorrow = true): Promise<FormState> {
+  const supabase = await supabaseServer();
+  const { error } = await supabase.rpc('set_menu_item_sold_out', { p_menu_item_id: itemId, p_sold_out: soldOut, p_until_tomorrow: untilTomorrow });
+  revalidatePath(`/restaurant/${restaurantId}/menu`);
+  revalidatePath(`/restaurant/${restaurantId}`);
+  return error ? { error: error.message } : {};
+}

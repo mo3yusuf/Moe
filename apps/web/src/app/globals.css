@@ -95,3 +95,19 @@ nav.side a:hover { background: var(--surface-2); color: var(--text); }
 .tile { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); text-decoration: none; }
 .tile:hover { border-color: var(--accent); }
 .tile strong { font-size: 16px; }
+.dish { display: flex; gap: 14px; align-items: center; padding: 12px; border-radius: 14px; background: var(--surface-2); }
+.dish-out .dish-photo, .dish-out .dish-name { opacity: .6; }
+.dish .btn.secondary { background: var(--surface); border: 1px solid var(--border); }
+.dish-photo { width: 64px; height: 64px; flex: none; border-radius: 12px; object-fit: cover; background: var(--surface); }
+.dish-nophoto { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--muted); border: 1px dashed var(--border); text-decoration: none; }
+.dish-name { font-weight: 800; font-size: 16px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linkish { background: none; border: 0; color: var(--muted); font-size: 13px; text-decoration: underline; cursor: pointer; padding: 4px 0; }
+@media (max-width: 560px) { .dish { flex-wrap: wrap; } .dish > .stack:last-child { width: 100%; flex-direction: row; justify-content: flex-end; align-items: center; } }
+/* ---------- Merchant navigation ---------- */
+.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--border); margin: 0 -16px; padding: 0 16px; -webkit-overflow-scrolling: touch; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 12px 14px; min-height: 44px; text-decoration: none; color: var(--muted); font-weight: 700; font-size: 15px; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-setup { color: var(--accent); }
+.tab-count { background: var(--accent); color: #fff; border-radius: 999px; font-size: 12px; min-width: 20px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; }

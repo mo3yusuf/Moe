@@ -651,6 +651,7 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
       return (data ?? []).map((r: any) => ({ creatorId: r.creator_id, stripeAccountId: r.stripe_account_id, amountCents: Number(r.amount_cents), commissionIds: r.commission_ids }));
     },
     async markCommissionsPaid(ids, transferId) { return Number(await rpcOrThrow('mark_commissions_paid', { p_commission_ids: ids, p_transfer_id: transferId })); },
+    async restoreSoldOutItems() { return Number(await rpcOrThrow('restore_sold_out_items', {})); },
     async refreshSimilarity() { return Number(await rpcOrThrow('refresh_video_similarity', {})); },
 
     async deliveryLocation(locationId) {
