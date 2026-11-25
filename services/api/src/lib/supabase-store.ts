@@ -418,10 +418,12 @@ export function supabaseStore(admin: SupabaseClient): DataStore {
     },
 
     async locationStatus(locationId, at) {
-      const { data } = await admin.from('restaurant_locations').select('is_accepting_orders, pickup_enabled, prep_time_minutes').eq('id', locationId).maybeSingle();
+      const { data } = await admin.from('restaurant_locations').select('is_accepting_orders, pickup_enabled, prep_time_minutes, busy_extra_minutes, busy_until').eq('id', locationId).maybeSingle();
       if (!data) return null;
       const open = await admin.rpc('location_is_open', { p_location_id: locationId, p_at: (at ?? new Date()).toISOString() });
-      return { isOpen: open.data === true, acceptingOrders: data.is_accepting_orders, pickupEnabled: data.pickup_enabled, prepTimeMinutes: data.prep_time_minutes };
+      // Busy mode ("add 20 minutes") lengthens the estimate customers see until it expires.
+      const busy = data.busy_until && new Date(data.busy_until) > new Date() ? data.busy_extra_minutes ?? 0 : 0;
+      return { isOpen: open.data === true, acceptingOrders: data.is_accepting_orders, pickupEnabled: data.pickup_enabled, prepTimeMinutes: data.prep_time_minutes + busy };
     },
 
     async serviceFeeConfig() {

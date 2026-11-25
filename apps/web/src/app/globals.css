@@ -87,3 +87,11 @@ nav.side a:hover { background: var(--surface-2); color: var(--text); }
 .stepper a[aria-current="step"] { border-color: var(--accent); color: var(--text); background: var(--surface); }
 .stepper .tick { width: 24px; height: 24px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900; background: var(--surface-2); }
 .stepper .tick.done { background: rgba(34,197,94,.18); color: var(--success); }
+.seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 440px; background: var(--surface-2); border-radius: 999px; padding: 4px; gap: 4px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font-weight: 700; font-size: 14px; border-radius: 999px; padding: 10px 4px; min-height: 44px; cursor: pointer; white-space: nowrap; }
+.seg button.on { background: var(--accent); color: #fff; }
+.stat { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.tile { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); text-decoration: none; }
+.tile:hover { border-color: var(--accent); }
+.tile strong { font-size: 16px; }
