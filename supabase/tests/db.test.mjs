@@ -1335,3 +1335,35 @@ test('busy mode: team adds minutes for a while, customers see longer prep, outsi
   await asSuperuser(c);
   assert.equal((await c.query('select busy_until from public.restaurant_locations where id = $1', [loc])).rows[0].busy_until, null);
 }));
+
+test('sold out today: staff mark it, it comes back next Brisbane day; only the server restores', () => tx(async (c) => {
+  await asSuperuser(c);
+  const item = (await c.query(`select ${id('i-smash-fries')} as x`)).rows[0].x;
+  const stranger = await createUser(c, 'soldout-stranger@example.com');
+  await as(c, stranger);
+  assert.equal((await expectDenied(c, 'select public.set_menu_item_sold_out($1, true)', [item])).error?.code, '42501');
+  await as(c, await ownerId(c));
+  await c.query('select public.set_menu_item_sold_out($1, true)', [item]);
+  await asSuperuser(c);
+  const row = (await c.query(`select is_available, sold_out_until, (sold_out_until at time zone 'Australia/Brisbane')::time as local_time,
+                                     (sold_out_until at time zone 'Australia/Brisbane')::date - (now() at time zone 'Australia/Brisbane')::date as days
+                              from public.menu_items where id = $1`, [item])).rows[0];
+  assert.equal(row.is_available, false);
+  assert.equal(row.local_time, '00:00:00', 'back at midnight Brisbane time');
+  assert.equal(row.days, 1, 'tomorrow');
+  // Not yet due: nothing restored. Due: restored by the server job.
+  assert.equal((await c.query('select public.restore_sold_out_items() n')).rows[0].n, 0);
+  await c.query(`update public.menu_items set sold_out_until = now() - interval '1 minute' where id = $1`, [item]);
+  assert.equal((await c.query('select public.restore_sold_out_items() n')).rows[0].n, 1);
+  assert.equal((await c.query('select is_available, sold_out_until from public.menu_items where id = $1', [item])).rows[0].is_available, true);
+  // "Until I turn it back on" has no end time and is never restored automatically.
+  await as(c, await ownerId(c));
+  await c.query('select public.set_menu_item_sold_out($1, true, false)', [item]);
+  await asSuperuser(c);
+  await c.query('select public.restore_sold_out_items()');
+  assert.equal((await c.query('select is_available from public.menu_items where id = $1', [item])).rows[0].is_available, false);
+  for (const who of [stranger, 'anon']) {
+    await as(c, who);
+    assert.ok((await expectDenied(c, 'select public.restore_sold_out_items()')).error, 'server only');
+  }
+}));

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { getViewer } from '@/lib/viewer';
@@ -10,7 +10,10 @@ export const metadata: Metadata = {
   title: 'CRAVE for Business',
   description: 'Restaurant and administrator dashboards for CRAVE.',
   robots: { index: false },
+  appleWebApp: { capable: true, title: 'CRAVE Biz', statusBarStyle: 'black-translucent' },
 };
+
+export const viewport: Viewport = { themeColor: '#0a0a0b', width: 'device-width', initialScale: 1 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const viewer = isConfigured ? await getViewer() : null;

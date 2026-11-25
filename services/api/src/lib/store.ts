@@ -200,6 +200,8 @@ export interface DataStore {
   /** Deletes the auth user (cascading personal data) and their uploaded files; orders are kept anonymised. */
   deleteUserAccount(requestId: string, userId: string): Promise<void>;
   runFraudRules(): Promise<number>;
+  /** Brings "sold out today" dishes back once their time has passed. */
+  restoreSoldOutItems?(): Promise<number>;
   // --- Phase 8: creator rewards ---
   creatorForPayouts(userId: string): Promise<{ handle: string; affiliateStatus: string; stripeAccountId: string | null; payoutsEnabled: boolean } | null>;
   setCreatorStripeAccount(userId: string, accountId: string): Promise<void>;

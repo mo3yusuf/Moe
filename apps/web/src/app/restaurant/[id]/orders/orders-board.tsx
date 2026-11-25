@@ -133,6 +133,7 @@ export function OrdersBoard({ restaurantId, location, initialOrders }: {
             <h2 style={{ margin: 0, fontSize: 28 }}>Ready to take orders?</h2>
             <p className="muted" style={{ margin: 0 }}>Tap start so this screen can ring loudly when a new order comes in. Keep it open on a tablet or phone at the counter, with the volume up.</p>
             <button className="btn big" onClick={() => void start()}>Start taking orders</button>
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>Tip: add this screen to the tablet’s home screen so it opens like an app — on iPad tap Share → Add to Home Screen; on Android tap ⋮ → Add to Home screen.</p>
           </div>
         </div>
       ) : null}
