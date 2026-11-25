@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 
-export interface ChosenAddress { line1: string; suburb: string; postcode: string; state: string; lat: number; lng: number; formatted: string }
+export interface ChosenAddress { line1: string; suburb: string; postcode: string; state: string; lat: number; lng: number; formatted: string; approximate?: boolean }
 
 /**
  * Type-ahead address search (like Uber Eats sign-up): suggestions appear as you type; picking one
@@ -15,6 +15,7 @@ export function AddressSearch({ onChoose }: { onChoose(a: ChosenAddress): void }
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [note, setNote] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
   const session = useRef(newSession());
   const skipNext = useRef(false); // picking a suggestion fills the box; don't search for that text
   const listId = useId();
@@ -29,12 +30,14 @@ export function AddressSearch({ onChoose }: { onChoose(a: ChosenAddress): void }
     if (!enabled || q.trim().length < 3) { setItems([]); return; }
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
+      setSearching(true);
       try {
         const r = await fetch(`/api/places/suggest?q=${encodeURIComponent(q.trim())}&s=${session.current}`, { signal: ctrl.signal });
         const b = (await r.json()) as { suggestions?: typeof items; error?: string };
         setItems(b.suggestions ?? []); setNote(b.error ?? null); setOpen(true); setActive(-1);
       } catch { /* typing again cancels the previous search */ }
-    }, 250);
+      finally { if (!ctrl.signal.aborted) setSearching(false); }
+    }, 180);
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [q, enabled]);
 
@@ -79,6 +82,7 @@ export function AddressSearch({ onChoose }: { onChoose(a: ChosenAddress): void }
           <li className="addr-credit" aria-hidden>{items.some((i) => i.address) ? '© OpenStreetMap contributors' : 'Powered by Google'}</li>
         </ul>
       ) : null}
+      {searching && !(open && items.length) ? <p className="muted" role="status" style={{ margin: '6px 0 0', fontSize: 13 }}>Searching…</p> : null}
       {note ? <p className="muted" style={{ margin: '6px 0 0', fontSize: 13 }}>{note}</p> : null}
     </div>
   );

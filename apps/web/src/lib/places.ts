@@ -1,5 +1,5 @@
 import 'server-only';
-import { parsePhotonFeature, parsePlaceAddress, type PhotonFeature, type PlaceAddress } from './places-parse';
+import { parsePhotonFeature, parsePlaceAddress, typedHouseNumber, type PhotonFeature, type PlaceAddress } from './places-parse';
 
 /**
  * Address search for restaurant sign-up, server side.
@@ -52,16 +52,19 @@ export async function placeAddress(placeId: string, sessionToken: string, fetchI
 /** Photon (photon.komoot.io): free, fair-use public instance — fine for occasional restaurant sign-ups. */
 async function suggestPhoton(input: string, fetchImpl: typeof fetch): Promise<PlaceSuggestion[]> {
   const url = new URL('https://photon.komoot.io/api/');
-  url.search = new URLSearchParams({
-    q: input, limit: '8', lang: 'en', lat: String(BRISBANE.latitude), lon: String(BRISBANE.longitude),
+  const params = new URLSearchParams({
+    q: input, limit: '10', lang: 'en', lat: String(BRISBANE.latitude), lon: String(BRISBANE.longitude),
     bbox: '151.9,-28.4,153.6,-26.5', // South East Queensland
-  }).toString();
+  });
+  for (const tag of ['!highway:bus_stop', '!public_transport', '!railway']) params.append('osm_tag', tag); // no bus stops / stations
+  url.search = params.toString();
+  const typedNumber = typedHouseNumber(input);
   const res = await fetchImpl(url, { headers: { 'User-Agent': 'CRAVE restaurant sign-up' }, signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error(`Photon ${res.status}`);
   const body = (await res.json()) as { features?: PhotonFeature[] };
   const seen = new Set<string>();
   return (body.features ?? []).flatMap((f) => {
-    const s = parsePhotonFeature(f);
+    const s = parsePhotonFeature(f, typedNumber);
     if (!s || seen.has(`${s.main}|${s.secondary}`)) return [];
     seen.add(`${s.main}|${s.secondary}`);
     return [s];

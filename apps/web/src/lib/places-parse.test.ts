@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parsePhotonFeature, parsePlaceAddress } from './places-parse';
+import { parsePhotonFeature, parsePlaceAddress, typedHouseNumber } from './places-parse';
 
 const c = (longText: string, types: string[], shortText = longText) => ({ longText, shortText, types });
 
@@ -51,4 +51,36 @@ test('Photon: a restaurant shows its name first, address second', () => {
 test('Photon: results outside Australia or without a location are skipped', () => {
   assert.equal(parsePhotonFeature({ geometry: { coordinates: [174.7, -36.8] }, properties: { street: 'Queen Street', countrycode: 'NZ' } }), null);
   assert.equal(parsePhotonFeature({ properties: { street: 'Queen Street', countrycode: 'AU' } }), null);
+});
+
+test('the typed house number is read from the start of the search', () => {
+  assert.equal(typedHouseNumber('82 Brookbent road Pallara'), '82');
+  assert.equal(typedHouseNumber('3/100 Queen St'), '3/100');
+  assert.equal(typedHouseNumber('12A James St'), '12A');
+  assert.equal(typedHouseNumber('Brookbent Road'), null);
+  assert.equal(typedHouseNumber('4110'), null);
+});
+
+test('Photon: when only the street is known, the typed number is kept (location approximate)', () => {
+  const s = parsePhotonFeature({ geometry: { coordinates: [152.99, -27.62] }, properties: {
+    osm_type: 'W', osm_id: 9, osm_key: 'highway', osm_value: 'residential', type: 'street', name: 'Brookbent Road',
+    district: 'Pallara', city: 'Brisbane', state: 'Queensland', postcode: '4110', countrycode: 'AU' } }, '82');
+  assert.equal(s?.main, '82 Brookbent Road');
+  assert.equal(s?.secondary, 'Pallara QLD 4110');
+  assert.equal(s?.address.line1, '82 Brookbent Road');
+  assert.equal(s?.address.approximate, true);
+});
+
+test('Photon: an exact house keeps its own number and is not approximate', () => {
+  const s = parsePhotonFeature({ geometry: { coordinates: [152.99, -27.62] }, properties: {
+    osm_key: 'place', osm_value: 'house', type: 'house', housenumber: '80', street: 'Brookbent Road', district: 'Pallara', state: 'Queensland', postcode: '4110', countrycode: 'AU' } }, '82');
+  assert.equal(s?.address.line1, '80 Brookbent Road');
+  assert.equal(s?.address.approximate, undefined);
+});
+
+test('Photon: bus stops and stations are skipped', () => {
+  const stop = { geometry: { coordinates: [152.99, -27.62] as [number, number] }, properties: { name: 'Brookbent Rd at Gooderham Rd', street: 'Brookbent Road', countrycode: 'AU' } };
+  assert.equal(parsePhotonFeature({ ...stop, properties: { ...stop.properties, osm_key: 'highway', osm_value: 'bus_stop' } }), null);
+  assert.equal(parsePhotonFeature({ ...stop, properties: { ...stop.properties, osm_key: 'public_transport', osm_value: 'platform' } }), null);
+  assert.equal(parsePhotonFeature({ ...stop, properties: { ...stop.properties, osm_key: 'railway', osm_value: 'station' } }), null);
 });
