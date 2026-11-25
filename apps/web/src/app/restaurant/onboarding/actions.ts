@@ -1,5 +1,5 @@
 'use server';
-import { BRISBANE_SUBURBS, CUISINES, isValidAbn, isValidAuPhone, normaliseAbn, slugify } from '@crave/core';
+import { BRISBANE_SUBURBS, CUISINES, haversineKm, isValidAbn, isValidAuPhone, normaliseAbn, slugify } from '@crave/core';
 import { redirect } from 'next/navigation';
 import { supabaseServer } from '@/lib/supabase/server';
 
@@ -14,8 +14,16 @@ export async function createRestaurant(_prev: OnboardState | undefined, form: Fo
   if (name.length < 2 || name.length > 100) return fail('Enter your restaurant name (2–100 characters).');
   if (!isValidAbn(fields.abn!)) return fail('That ABN is not valid. Check the 11 digits on the ABN Lookup register.');
   if (!fields.legalName) return fail('Enter the legal entity name registered to the ABN.');
-  const suburb = BRISBANE_SUBURBS[fields.suburb!];
-  if (!suburb) return fail('Choose your suburb.');
+  // Exact location from the address search (Google Places), if the owner picked a suggestion; it must
+  // be a Queensland address within ~60 km of Brisbane. Otherwise: the centre of a listed suburb.
+  const lat = Number(form.get('lat')), lng = Number(form.get('lng'));
+  const postcode = get('postcode');
+  const exact = Number.isFinite(lat) && Number.isFinite(lng) && form.get('lat') !== null && /^4\d{3}$/.test(postcode) && get('state') === 'QLD'
+    && haversineKm(lat, lng, -27.4698, 153.0251) <= 60;
+  if (form.get('lat') !== null && !exact) return fail('CRAVE is only in Brisbane for now — that address is outside our area.');
+  const listed = BRISBANE_SUBURBS[fields.suburb!];
+  const suburb = exact ? { postcode, lat, lng } : listed;
+  if (!suburb || !fields.suburb) return fail('Choose your suburb.');
   if (fields.address!.length < 4) return fail('Enter the street address.');
   if (fields.phone && !isValidAuPhone(fields.phone)) return fail('Enter a valid Australian phone number.');
   const cuisines = form.getAll('cuisines').map(String).filter((c) => (CUISINES as readonly string[]).includes(c));

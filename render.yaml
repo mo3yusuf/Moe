@@ -125,3 +125,5 @@ services:
         fromService: { type: web, name: crave-api, property: host }
       - key: SENTRY_DSN                    # crash reporting (sentry.io, "Next.js" project); optional
         sync: false
+      - key: GOOGLE_MAPS_API_KEY           # secret — address search on restaurant sign-up (Places API New); optional
+        sync: false
