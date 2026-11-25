@@ -114,3 +114,10 @@ nav.side a:hover { background: var(--surface-2); color: var(--text); }
 .feature-icon { width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: rgba(255,77,46,.12); color: var(--accent); }
 .feature-icon.big { width: 72px; height: 72px; border-radius: 20px; }
 .tile-icon { color: var(--accent); display: inline-flex; margin-bottom: 4px; }
+/* ---------- Address search ---------- */
+.addr { position: relative; }
+.addr-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 6px; list-style: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+.addr-list li[role="option"] { padding: 12px 12px; border-radius: 10px; cursor: pointer; line-height: 1.35; font-size: 15px; }
+.addr-list li[role="option"]:hover, .addr-list li.active { background: var(--surface-2); }
+.addr-list .addr-credit { padding: 6px 12px 2px; font-size: 11px; color: var(--faint); text-align: right; }
