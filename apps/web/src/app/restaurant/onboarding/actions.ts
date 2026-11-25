@@ -14,15 +14,17 @@ export async function createRestaurant(_prev: OnboardState | undefined, form: Fo
   if (name.length < 2 || name.length > 100) return fail('Enter your restaurant name (2–100 characters).');
   if (!isValidAbn(fields.abn!)) return fail('That ABN is not valid. Check the 11 digits on the ABN Lookup register.');
   if (!fields.legalName) return fail('Enter the legal entity name registered to the ABN.');
-  // Exact location from the address search (Google Places), if the owner picked a suggestion; it must
-  // be a Queensland address within ~60 km of Brisbane. Otherwise: the centre of a listed suburb.
+  // Exact location from the address search, if the owner picked a suggestion: it must be in
+  // Queensland within ~60 km of Brisbane. Otherwise (or if no postcode came back): the suburb centre.
   const lat = Number(form.get('lat')), lng = Number(form.get('lng'));
-  const postcode = get('postcode');
-  const exact = Number.isFinite(lat) && Number.isFinite(lng) && form.get('lat') !== null && /^4\d{3}$/.test(postcode) && get('state') === 'QLD'
-    && haversineKm(lat, lng, -27.4698, 153.0251) <= 60;
-  if (form.get('lat') !== null && !exact) return fail('CRAVE is only in Brisbane for now — that address is outside our area.');
+  const hasCoords = form.get('lat') !== null && Number.isFinite(lat) && Number.isFinite(lng);
+  if (hasCoords && (haversineKm(lat, lng, -27.4698, 153.0251) > 60 || !['', 'QLD'].includes(get('state')))) {
+    return fail('CRAVE is only in Brisbane for now — that address is outside our area.');
+  }
   const listed = BRISBANE_SUBURBS[fields.suburb!];
-  const suburb = exact ? { postcode, lat, lng } : listed;
+  const postcode = /^4\d{3}$/.test(get('postcode')) ? get('postcode') : listed?.postcode;
+  if (hasCoords && !postcode) return fail('We couldn’t find the postcode for that address — choose your suburb from the list.');
+  const suburb = hasCoords ? { postcode: postcode!, lat, lng } : listed;
   if (!suburb || !fields.suburb) return fail('Choose your suburb.');
   if (fields.address!.length < 4) return fail('Enter the street address.');
   if (fields.phone && !isValidAuPhone(fields.phone)) return fail('Enter a valid Australian phone number.');

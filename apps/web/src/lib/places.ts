@@ -1,21 +1,25 @@
 import 'server-only';
-import { parsePlaceAddress, type PlaceAddress } from './places-parse';
+import { parsePhotonFeature, parsePlaceAddress, type PhotonFeature, type PlaceAddress } from './places-parse';
 
 /**
- * Address search for restaurant sign-up (Google Places API, server side so the key never reaches the
- * browser). Off unless GOOGLE_MAPS_API_KEY is set — the sign-up form then works as a plain form.
- * Suggestions are limited to Australia and biased towards Brisbane; only basic address fields are
- * requested (the cheapest Places tier). A session token groups typing + the final pick for billing.
+ * Address search for restaurant sign-up, server side.
+ *  - Default: Photon (free OpenStreetMap search; no account or key), limited to South East Queensland.
+ *  - If GOOGLE_MAPS_API_KEY is set: Google Places API (New) instead (more accurate, finds businesses by
+ *    name). Only basic address fields are requested; a session token groups typing + the pick for billing.
+ * ADDRESS_SEARCH=off turns it off entirely (the form then works as a plain form).
  */
 const KEY = () => process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
-export const placesEnabled = () => KEY().length > 0;
+export const placesEnabled = () => process.env.ADDRESS_SEARCH !== 'off';
+const useGoogle = () => KEY().length > 0;
 
 const BRISBANE = { latitude: -27.4698, longitude: 153.0251 };
 
-export interface PlaceSuggestion { id: string; main: string; secondary: string }
+/** `address` is filled in straight away when the provider returns it with the suggestion (Photon). */
+export interface PlaceSuggestion { id: string; main: string; secondary: string; address?: PlaceAddress }
 export type { PlaceAddress } from './places-parse';
 
 export async function suggestPlaces(input: string, sessionToken: string, fetchImpl: typeof fetch = fetch): Promise<PlaceSuggestion[]> {
+  if (!useGoogle()) return suggestPhoton(input, fetchImpl);
   const res = await fetchImpl('https://places.googleapis.com/v1/places:autocomplete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY() },
@@ -43,4 +47,23 @@ export async function placeAddress(placeId: string, sessionToken: string, fetchI
   if (!res.ok) throw new Error(`Places details ${res.status}`);
   const p = (await res.json()) as Parameters<typeof parsePlaceAddress>[0];
   return parsePlaceAddress(p);
+}
+
+/** Photon (photon.komoot.io): free, fair-use public instance — fine for occasional restaurant sign-ups. */
+async function suggestPhoton(input: string, fetchImpl: typeof fetch): Promise<PlaceSuggestion[]> {
+  const url = new URL('https://photon.komoot.io/api/');
+  url.search = new URLSearchParams({
+    q: input, limit: '8', lang: 'en', lat: String(BRISBANE.latitude), lon: String(BRISBANE.longitude),
+    bbox: '151.9,-28.4,153.6,-26.5', // South East Queensland
+  }).toString();
+  const res = await fetchImpl(url, { headers: { 'User-Agent': 'CRAVE restaurant sign-up' }, signal: AbortSignal.timeout(5000) });
+  if (!res.ok) throw new Error(`Photon ${res.status}`);
+  const body = (await res.json()) as { features?: PhotonFeature[] };
+  const seen = new Set<string>();
+  return (body.features ?? []).flatMap((f) => {
+    const s = parsePhotonFeature(f);
+    if (!s || seen.has(`${s.main}|${s.secondary}`)) return [];
+    seen.add(`${s.main}|${s.secondary}`);
+    return [s];
+  }).slice(0, 6);
 }

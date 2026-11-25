@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parsePlaceAddress } from './places-parse';
+import { parsePhotonFeature, parsePlaceAddress } from './places-parse';
 
 const c = (longText: string, types: string[], shortText = longText) => ({ longText, shortText, types });
 
@@ -28,4 +28,27 @@ test('a business with no street number falls back to the first part of the addre
 
 test('no location means no address', () => {
   assert.equal(parsePlaceAddress({ formattedAddress: 'x' }), null);
+});
+
+
+test('Photon: a street address', () => {
+  const s = parsePhotonFeature({ geometry: { coordinates: [153.0355, -27.4575] }, properties: {
+    osm_type: 'N', osm_id: 1, housenumber: '12', street: 'James Street', district: 'Fortitude Valley', city: 'Brisbane', state: 'Queensland', postcode: '4006', countrycode: 'AU' } });
+  assert.equal(s?.main, '12 James Street');
+  assert.equal(s?.secondary, 'Fortitude Valley QLD 4006');
+  assert.deepEqual(s?.address, { line1: '12 James Street', suburb: 'Fortitude Valley', postcode: '4006', state: 'QLD', lat: -27.4575, lng: 153.0355,
+    formatted: '12 James Street, Fortitude Valley QLD 4006' });
+});
+
+test('Photon: a restaurant shows its name first, address second', () => {
+  const s = parsePhotonFeature({ geometry: { coordinates: [153.03, -27.45] }, properties: {
+    osm_type: 'N', osm_id: 2, name: 'Valley Smash', housenumber: '5', street: 'Ann Street', district: 'Fortitude Valley', state: 'Queensland', postcode: '4006', countrycode: 'AU' } });
+  assert.equal(s?.main, 'Valley Smash');
+  assert.equal(s?.secondary, '5 Ann Street, Fortitude Valley QLD 4006');
+  assert.equal(s?.address.line1, '5 Ann Street');
+});
+
+test('Photon: results outside Australia or without a location are skipped', () => {
+  assert.equal(parsePhotonFeature({ geometry: { coordinates: [174.7, -36.8] }, properties: { street: 'Queen Street', countrycode: 'NZ' } }), null);
+  assert.equal(parsePhotonFeature({ properties: { street: 'Queen Street', countrycode: 'AU' } }), null);
 });

@@ -20,3 +20,38 @@ export function parsePlaceAddress(p: { addressComponents?: Component[]; formatte
     formatted: p.formattedAddress ?? '',
   };
 }
+
+/** One feature from Photon (free OpenStreetMap address search). */
+export interface PhotonFeature {
+  geometry?: { coordinates?: [number, number] };
+  properties?: {
+    osm_type?: string; osm_id?: number; name?: string; housenumber?: string; street?: string; postcode?: string;
+    district?: string; locality?: string; city?: string; state?: string; countrycode?: string; type?: string;
+  };
+}
+
+const STATE_CODES: Record<string, string> = {
+  Queensland: 'QLD', 'New South Wales': 'NSW', Victoria: 'VIC', 'South Australia': 'SA', 'Western Australia': 'WA',
+  Tasmania: 'TAS', 'Northern Territory': 'NT', 'Australian Capital Territory': 'ACT',
+};
+
+/** A Photon feature as a suggestion with its full address (no second lookup needed). */
+export function parsePhotonFeature(f: PhotonFeature): { id: string; main: string; secondary: string; address: PlaceAddress } | null {
+  const p = f.properties ?? {};
+  const [lng, lat] = f.geometry?.coordinates ?? [];
+  if (typeof lat !== 'number' || typeof lng !== 'number' || (p.countrycode && p.countrycode.toUpperCase() !== 'AU')) return null;
+  const street = [p.housenumber, p.street].filter(Boolean).join(' ');
+  const suburb = p.district || p.locality || p.city || '';
+  const state = p.state ? STATE_CODES[p.state] ?? p.state : '';
+  const line1 = street || p.name || '';
+  if (!line1) return null;
+  // A business or place: show its name first, then its street.
+  const isPlace = !!p.name && p.name !== p.street;
+  const where = [suburb, [state, p.postcode].filter(Boolean).join(' ')].filter(Boolean).join(' ');
+  return {
+    id: `${p.osm_type ?? 'x'}${p.osm_id ?? `${lat},${lng}`}`,
+    main: isPlace ? p.name! : line1,
+    secondary: isPlace ? [street, where].filter(Boolean).join(', ') : where,
+    address: { line1, suburb, postcode: p.postcode ?? '', state, lat, lng, formatted: [line1, where].filter(Boolean).join(', ') },
+  };
+}
