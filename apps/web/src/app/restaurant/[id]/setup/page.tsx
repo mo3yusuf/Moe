@@ -41,7 +41,7 @@ export default async function SetupPage({ params, searchParams }: { params: Prom
     <div className="stack" style={{ gap: 20 }}>
       <div className="card stack" style={{ gap: 14 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>{allDone ? (restaurant.status === 'verified' ? 'Your store is live 🎉' : 'All done — we’re reviewing your store') : 'Set up your store'}</h2>
+          <h2 style={{ margin: 0 }}>{allDone ? (restaurant.status === 'verified' ? 'Your store is live' : 'All done — we’re reviewing your store') : 'Set up your store'}</h2>
           <span className="muted">{doneCount} of {STEPS.length} done</span>
         </div>
         <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={STEPS.length} aria-valuenow={doneCount}>

@@ -2,6 +2,7 @@
 
 import { formatMoney } from '@crave/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LineIcon } from '@/components/line-icon';
 import { supabaseBrowser } from '@/lib/supabase/browser';
 import { acceptOrder, setAcceptingOrders, setOrderStatus } from './actions';
 import { ORDER_COLUMNS, type BoardOrder } from './shared';
@@ -129,7 +130,7 @@ export function OrdersBoard({ restaurantId, location, initialOrders }: {
       {!started ? (
         <div className="start-overlay" role="dialog" aria-label="Start taking orders">
           <div className="stack" style={{ alignItems: 'center', textAlign: 'center', maxWidth: 420 }}>
-            <div style={{ fontSize: 56 }} aria-hidden>🔔</div>
+            <span className="feature-icon big"><LineIcon name="bell" size={36} /></span>
             <h2 style={{ margin: 0, fontSize: 28 }}>Ready to take orders?</h2>
             <p className="muted" style={{ margin: 0 }}>Tap start so this screen can ring loudly when a new order comes in. Keep it open on a tablet or phone at the counter, with the volume up.</p>
             <button className="btn big" onClick={() => void start()}>Start taking orders</button>
@@ -150,8 +151,8 @@ export function OrdersBoard({ restaurantId, location, initialOrders }: {
           ) : <span className="badge warn">Add a location to take orders</span>}
         </div>
         <div className="row" style={{ gap: 8 }}>
-          {ringing ? <button className="btn secondary" onClick={() => setSilencedIds(new Set(newOrders.map((o) => o.id)))}>🔕 Silence</button> : null}
-          <button className="btn secondary" onClick={fullscreen}>⛶ Full screen</button>
+          {ringing ? <button className="btn secondary" onClick={() => setSilencedIds(new Set(newOrders.map((o) => o.id)))}>Silence alarm</button> : null}
+          <button className="btn secondary" onClick={fullscreen}>Full screen</button>
         </div>
       </div>
 
@@ -232,7 +233,7 @@ function OrderCard({ o, now, highlight, children }: { o: BoardOrder; now: number
         <span className="muted">{o.order_number}</span>
       </div>
       <div className="muted" style={{ fontSize: 14 }}>
-        {o.fulfilment === 'delivery' ? '🛵 Delivery' : '🛍 Pickup'} · {count} item{count === 1 ? '' : 's'} · {o.scheduled_for ? `for ${clock(o.scheduled_for)}` : 'ASAP'} · {minsSince(o.placed_at, now)} min ago
+        {o.fulfilment === 'delivery' ? 'Delivery' : 'Pickup'} · {count} item{count === 1 ? '' : 's'} · {o.scheduled_for ? `for ${clock(o.scheduled_for)}` : 'ASAP'} · {minsSince(o.placed_at, now)} min ago
         {o.source_video_id ? ' · from a CRAVE video' : ''}
       </div>
       {d ? <div className="notice">Courier {d.courier_name ? `${d.courier_name} ` : ''}({d.status.replace('_', ' ')}) — hand it only to the delivery partner.</div> : null}

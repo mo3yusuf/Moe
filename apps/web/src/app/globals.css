@@ -111,3 +111,6 @@ nav.side a:hover { background: var(--surface-2); color: var(--text); }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .tab-setup { color: var(--accent); }
 .tab-count { background: var(--accent); color: #fff; border-radius: 999px; font-size: 12px; min-width: 20px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; }
+.feature-icon { width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: rgba(255,77,46,.12); color: var(--accent); }
+.feature-icon.big { width: 72px; height: 72px; border-radius: 20px; }
+.tile-icon { color: var(--accent); display: inline-flex; margin-bottom: 4px; }

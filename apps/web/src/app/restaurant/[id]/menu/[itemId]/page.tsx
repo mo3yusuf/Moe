@@ -48,7 +48,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
               <form action={deleteOptionGroup.bind(null, id, itemId, g.id)}><button className="btn danger" style={{ minHeight: 34 }}>Remove</button></form>
             </div>
             <div className="muted">{(g.menu_item_options ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order).map((o: any) =>
-              `${o.image_url ? '📷 ' : ''}${o.name}${o.price_delta_cents ? ` (+${formatMoney(o.price_delta_cents)})` : ''}${o.max_quantity > 1 ? ` · up to ${o.max_quantity}` : ''}${o.linked_menu_item_id ? ' · linked dish' : ''}`).join(' · ')}</div>
+              `${o.name}${o.image_url ? ' (photo)' : ''}${o.price_delta_cents ? ` (+${formatMoney(o.price_delta_cents)})` : ''}${o.max_quantity > 1 ? ` · up to ${o.max_quantity}` : ''}${o.linked_menu_item_id ? ' · linked dish' : ''}`).join(' · ')}</div>
           </div>
         ))}
         <OptionGroupForm action={addOptionGroup.bind(null, id, itemId)} parents={parents} />
