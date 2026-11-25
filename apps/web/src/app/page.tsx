@@ -1,21 +1,23 @@
 import Link from 'next/link';
 import { getViewer } from '@/lib/viewer';
 import { isConfigured } from '@/lib/env';
+import { LineIcon, type IconName } from '@/components/line-icon';
 
 const STEPS = [
   ['Create your account', 'Sign up free in a minute with your email.'],
   ['Set up your store', 'Add your opening hours and menu, connect your bank through Stripe, and upload your documents.'],
   ['Start getting orders', 'Once CRAVE approves your store, customers find your dishes in videos and order for pickup.'],
 ];
-const BENEFITS = [
-  ['🎬', 'Discovered through video', 'Customers swipe through short videos of real dishes — yours included — and order what they crave. No filming needed: food creators feature you.'],
-  ['🔔', 'An orders screen that rings', 'Run CRAVE on any tablet or phone at the counter. New orders ring until you accept, with one tap to set the prep time.'],
-  ['💸', 'Paid straight to your bank', 'Stripe sends your share of every order to your bank account automatically. See every payout in your dashboard.'],
-  ['📈', 'Know what sells', 'See your sales, top dishes and which videos brought in orders.'],
+const BENEFITS: [IconName, string, string][] = [
+  ['film', 'Your food, in cinematic video', 'Your dishes are showcased in full-screen, cinematic video — the way people discover food today. Customers watch, crave and order in a few taps.'],
+  ['users', 'Featured by creators and reviewers', 'Food creators and reviewers post videos of your dishes to your CRAVE page, putting you in front of their audiences. You approve which dish each video links to.'],
+  ['bell', 'An orders screen that rings', 'Run CRAVE on any tablet or phone at the counter. New orders ring until you accept, with one tap to set the prep time.'],
+  ['bank', 'Paid straight to your bank', 'Stripe sends your share of every order to your bank account automatically. See every payout in your dashboard.'],
+  ['chart', 'Know what sells', 'See your sales, top dishes and which videos brought in orders.'],
 ];
 const FAQ = [
   ['What does it cost?', 'Nothing to join and no monthly fee. CRAVE takes a commission on each order placed through CRAVE (shown in your dashboard before you go live). Card processing is included.'],
-  ['Do I need to make videos?', 'No. List your menu with photos. Food creators post videos of your dishes, and you approve which dish each video is linked to.'],
+  ['Do I need to make videos?', 'No. List your menu with photos to start. Food creators and reviewers post videos of your dishes to your page, and you can upload your own too. You approve which dish each video is linked to.'],
   ['What do I need to sign up?', 'Your ABN, your food business licence, and a bank account for payouts.'],
   ['Pickup or delivery?', 'Pickup today. Delivery through a delivery partner is coming.'],
 ];
@@ -31,7 +33,7 @@ export default async function Home() {
       <section className="hero">
         <span className="badge ok" style={{ alignSelf: "flex-start" }}>For restaurants in Brisbane</span>
         <h1>Turn food videos<br />into orders.</h1>
-        <p className="muted">CRAVE is where hungry people swipe through videos of real dishes — and order them. Put your restaurant in front of them.</p>
+        <p className="muted">CRAVE showcases real dishes in cinematic, full-screen video — and lets people order them on the spot. Put your restaurant in front of them.</p>
         <div className="row">
           <Link className="btn big" href={primary.href}>{primary.label}</Link>
           {viewer?.isAdmin ? <Link className="btn secondary" href="/admin">Admin console</Link> : null}
@@ -57,7 +59,7 @@ export default async function Home() {
         <div className="grid">
           {BENEFITS.map(([icon, t, d]) => (
             <div key={t} className="card stack" style={{ gap: 6 }}>
-              <span style={{ fontSize: 28 }} aria-hidden>{icon}</span>
+              <span className="feature-icon"><LineIcon name={icon} /></span>
               <strong style={{ fontSize: 17 }}>{t}</strong>
               <span className="muted">{d}</span>
             </div>

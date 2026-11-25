@@ -8,7 +8,6 @@ export function SignUpForm() {
   if (state?.checkEmail) {
     return (
       <div className="stack">
-        <div style={{ fontSize: 40 }} aria-hidden>📬</div>
         <h2 style={{ margin: 0 }}>Check your email</h2>
         <p className="muted" style={{ margin: 0 }}>We sent a link to <strong>{state.checkEmail}</strong>. Tap it to confirm your account — you’ll go straight to setting up your store.</p>
       </div>

@@ -2,6 +2,7 @@ import { formatMoney } from '@crave/core';
 import Link from 'next/link';
 import { loadMemberRestaurant } from '@/lib/restaurant';
 import { setupProgress } from '@/lib/setup-progress';
+import { LineIcon } from '@/components/line-icon';
 import { StoreControls } from './store-controls';
 
 /** Brisbane has no daylight saving: "today" starts at 00:00 UTC+10. */
@@ -53,7 +54,7 @@ export default async function StoreHome({ params }: { params: Promise<{ id: stri
 
       {waiting ? (
         <Link href={`${base}/orders`} className="card row" style={{ justifyContent: 'space-between', textDecoration: 'none', borderColor: 'var(--accent)', background: 'rgba(255,77,46,.12)' }}>
-          <strong style={{ fontSize: 18 }}>🔔 {waiting} new order{waiting > 1 ? 's' : ''} waiting</strong>
+          <strong style={{ fontSize: 18 }}>{waiting} new order{waiting > 1 ? 's' : ''} waiting</strong>
           <span className="btn">Open orders</span>
         </Link>
       ) : null}
@@ -77,12 +78,12 @@ export default async function StoreHome({ params }: { params: Promise<{ id: stri
       <section className="stack" aria-labelledby="manage">
         <h2 id="manage" style={{ margin: 0 }}>Manage your store</h2>
         <div className="tiles">
-          <Link className="tile" href={`${base}/orders`}><strong>🔔 Orders</strong><span className="muted">The counter screen that rings</span></Link>
-          <Link className="tile" href={`${base}/menu`}><strong>🍔 Menu</strong><span className="muted">{menuCount ?? 0} dishes · prices, photos, sold out</span></Link>
-          <Link className="tile" href={`${base}/hours`}><strong>🕒 Hours</strong><span className="muted">Opening hours and prep time</span></Link>
-          <Link className="tile" href={`${base}/content`}><strong>🎬 Videos</strong><span className="muted">{pendingTags.count ? `${pendingTags.count} waiting for your approval` : 'Videos featuring your dishes'}</span></Link>
-          <Link className="tile" href={`${base}/sales`}><strong>📈 Sales</strong><span className="muted">Sales, top dishes, video revenue</span></Link>
-          <Link className="tile" href={`${base}/payouts`}><strong>💸 Payouts</strong><span className="muted">{restaurant.payouts_enabled ? 'Bank connected' : 'Connect your bank'}</span></Link>
+          <Link className="tile" href={`${base}/orders`}><span className="tile-icon"><LineIcon name="bell" size={20} /></span><strong>Orders</strong><span className="muted">The counter screen that rings</span></Link>
+          <Link className="tile" href={`${base}/menu`}><span className="tile-icon"><LineIcon name="menu" size={20} /></span><strong>Menu</strong><span className="muted">{menuCount ?? 0} dishes · prices, photos, sold out</span></Link>
+          <Link className="tile" href={`${base}/hours`}><span className="tile-icon"><LineIcon name="clock" size={20} /></span><strong>Hours</strong><span className="muted">Opening hours and prep time</span></Link>
+          <Link className="tile" href={`${base}/content`}><span className="tile-icon"><LineIcon name="film" size={20} /></span><strong>Videos</strong><span className="muted">{pendingTags.count ? `${pendingTags.count} waiting for your approval` : 'Videos featuring your dishes'}</span></Link>
+          <Link className="tile" href={`${base}/sales`}><span className="tile-icon"><LineIcon name="chart" size={20} /></span><strong>Sales</strong><span className="muted">Sales, top dishes, video revenue</span></Link>
+          <Link className="tile" href={`${base}/payouts`}><span className="tile-icon"><LineIcon name="bank" size={20} /></span><strong>Payouts</strong><span className="muted">{restaurant.payouts_enabled ? 'Bank connected' : 'Connect your bank'}</span></Link>
         </div>
       </section>
     </div>
