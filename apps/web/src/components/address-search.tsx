@@ -11,7 +11,7 @@ export interface ChosenAddress { line1: string; suburb: string; postcode: string
 export function AddressSearch({ onChoose }: { onChoose(a: ChosenAddress): void }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [q, setQ] = useState('');
-  const [items, setItems] = useState<{ id: string; main: string; secondary: string }[]>([]);
+  const [items, setItems] = useState<{ id: string; main: string; secondary: string; address?: ChosenAddress }[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [note, setNote] = useState<string | null>(null);
@@ -43,6 +43,7 @@ export function AddressSearch({ onChoose }: { onChoose(a: ChosenAddress): void }
     if (!s) return;
     skipNext.current = true;
     setOpen(false); setItems([]); setQ(s.secondary ? `${s.main}, ${s.secondary}` : s.main);
+    if (s.address) { onChoose(s.address); setNote(null); return; } // free search returns the address directly
     try {
       const r = await fetch(`/api/places/details?id=${encodeURIComponent(s.id)}&s=${session.current}`);
       const b = (await r.json()) as { address?: ChosenAddress; error?: string };
@@ -75,7 +76,7 @@ export function AddressSearch({ onChoose }: { onChoose(a: ChosenAddress): void }
               <strong>{s.main}</strong>{s.secondary ? <span className="muted"> {s.secondary}</span> : null}
             </li>
           ))}
-          <li className="addr-credit" aria-hidden>Powered by Google</li>
+          <li className="addr-credit" aria-hidden>{items.some((i) => i.address) ? '© OpenStreetMap contributors' : 'Powered by Google'}</li>
         </ul>
       ) : null}
       {note ? <p className="muted" style={{ margin: '6px 0 0', fontSize: 13 }}>{note}</p> : null}
