@@ -38,6 +38,8 @@ export interface AppDeps {
   healthCheck?: () => Promise<boolean>;
   /** Crash reporting for unexpected (500) errors, e.g. Sentry. */
   reportError?: (err: unknown, context?: Record<string, unknown>) => void;
+  /** Public address of the customer app (e.g. for the admin's sample videos, hosted there). */
+  appUrl?: string | null;
   /** Stripe publishable key (pk_...), public by design; the app reads it from GET /app-config. */
   stripePublishableKey?: string | null;
   /** Mux streaming; null = videos are served from Supabase Storage as uploaded. */
@@ -77,6 +79,7 @@ export function createApp(deps: AppDeps) {
       orderingEnabled: stripeReady || deps.paymentsMode === 'simulated',
       paymentsMode: deps.paymentsMode,
       stripePublishableKey: stripeReady ? deps.stripePublishableKey : null,
+      appUrl: deps.appUrl ?? null,
     });
   });
 

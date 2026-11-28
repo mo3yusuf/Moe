@@ -1416,3 +1416,42 @@ test('end to end: sample restaurant → tagged video → feed (orderable) → or
   await as(c, admin);
   assert.equal((await c.query('select status from public.restaurant_accept_order($1, 15)', [o.id])).rows[0].status, 'accepted');
 }));
+
+test('feed: videos not linked to a restaurant are hidden (every feed video can be ordered from)', () => tx(async (c) => {
+  const u = await createUser(c, 'unlinked-poster@example.com');
+  await asSuperuser(c);
+  const v = (await c.query(`insert into public.videos (uploader_id, source, caption, duration_ms, status, playback_url, published_at, rights_attested_at)
+                            values ($1, 'customer', 'just my lunch', 8000, 'published', 'https://example.com/x.mp4', now(), now()) returning id`, [u])).rows[0].id;
+  const rows = (await c.query('select restaurant_id from public.feed_candidates(null, -27.4698, 153.0251, 50, 1000)')).rows;
+  assert.ok(rows.length > 0, 'feed still has restaurant videos');
+  assert.ok(rows.every((r) => r.restaurant_id), 'every feed video has a restaurant');
+  assert.equal((await c.query('select count(*)::int n from public.feed_candidates(null, null, null, 50, 1000) where video_id = $1', [v])).rows[0].n, 0, 'unlinked video hidden');
+}));
+
+test('sample restaurants: five approved restaurants with menus, options and a swipe-to-order sample video each', () => tx(async (c) => {
+  const admin = await makeAdmin(c, 'samples-admin@example.com');
+  const nobody = await createUser(c, 'samples-nobody@example.com');
+  await as(c, nobody);
+  assert.equal((await expectDenied(c, `select public.admin_create_sample_restaurants('https://dash.example')`)).error?.code, '42501', 'admins only');
+  await as(c, admin);
+  assert.equal((await expectDenied(c, `select public.admin_create_sample_restaurants('javascript:alert(1)')`)).error?.code, '22023', 'media address validated');
+  const ids = (await c.query(`select public.admin_create_sample_restaurants('https://dash.example') ids`)).rows[0].ids;
+  assert.equal(ids.length, 5);
+  const again = (await c.query(`select public.admin_create_sample_restaurants('https://dash.example') ids`)).rows[0].ids;
+  assert.deepEqual(again, ids, 'running again changes nothing');
+
+  await asSuperuser(c);
+  const rests = (await c.query(`select r.name, r.status, (select count(*)::int from public.menu_items mi where mi.restaurant_id = r.id) dishes,
+                                       (select count(*)::int from public.videos v where v.restaurant_id = r.id) videos
+                                from public.restaurants r where r.id = any($1) order by r.name`, [ids])).rows;
+  assert.deepEqual(rests.map((r) => r.name), ['CRAVE Demo Kitchen', 'Cedar & Ember Grill', 'Forno Rosso Pizzeria', 'Kōen Sushi Bar', 'Little Lantern Thai']);
+  assert.ok(rests.every((r) => r.status === 'verified' && r.dishes >= 5 && r.videos === 1), JSON.stringify(rests));
+  assert.ok(Number((await c.query(`select count(*) n from public.menu_item_option_groups g join public.menu_items mi on mi.id = g.menu_item_id where mi.restaurant_id = any($1)`, [ids])).rows[0].n) >= 15, 'plenty of options');
+
+  // Every sample video is in the feed, linked to its signature dish and orderable.
+  const feed = (await c.query(`select restaurant_name, menu_item_name, orderable, playback_url from public.feed_candidates(null, -27.4698, 153.0251, 30, 1000) where restaurant_id = any($1) order by restaurant_name`, [ids])).rows;
+  assert.deepEqual(feed.map((f) => [f.restaurant_name, f.menu_item_name, f.orderable]), [
+    ['CRAVE Demo Kitchen', 'Double Smash Burger', true], ['Cedar & Ember Grill', 'Mixed Grill Plate', true], ['Forno Rosso Pizzeria', 'Margherita', true],
+    ['Kōen Sushi Bar', 'Salmon Aburi Nigiri', true], ['Little Lantern Thai', 'Green Curry', true]]);
+  assert.ok(feed.every((f) => /^https:\/\/dash\.example\/samples\/\w+\.mp4$/.test(f.playback_url)));
+}));
