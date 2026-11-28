@@ -225,9 +225,9 @@ describe('hardening', () => {
 
   it('/app-config tells the app whether ordering is on, without sign-in', async () => {
     const off = await (await makeApp({}, { paymentsMode: 'disabled' }).request('/app-config')).json();
-    expect(off).toEqual({ orderingEnabled: false, paymentsMode: 'disabled', stripePublishableKey: null });
+    expect(off).toEqual({ orderingEnabled: false, paymentsMode: 'disabled', stripePublishableKey: null, appUrl: null });
     const on = await (await makeApp({}, { paymentsMode: 'stripe', payments: { name: 'stripe', testMode: true } as unknown as PaymentProvider, stripePublishableKey: 'pk_test_123' }).request('/app-config')).json();
-    expect(on).toEqual({ orderingEnabled: true, paymentsMode: 'stripe', stripePublishableKey: 'pk_test_123' });
+    expect(on).toEqual({ orderingEnabled: true, paymentsMode: 'stripe', stripePublishableKey: 'pk_test_123', appUrl: null });
     // Stripe mode without a working provider or key never tells the app to take orders.
     const half = await (await makeApp({}, { paymentsMode: 'stripe', payments: null, stripePublishableKey: 'pk_test_123' }).request('/app-config')).json();
     expect(half).toMatchObject({ orderingEnabled: false, stripePublishableKey: null });

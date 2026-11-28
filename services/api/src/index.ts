@@ -51,6 +51,7 @@ const app = createApp({
   ranker: rulesRanker(store, { onError: (e) => console.error('[crave-api] impression logging failed', e) }),
   paymentsMode: env.PAYMENTS_MODE,
   stripePublishableKey: env.STRIPE_PUBLISHABLE_KEY ?? null,
+  appUrl: publicBaseUrl(env.APP_HOST) || null,
   payments,
   delivery,
   stripeOnBehalfOf: env.STRIPE_ON_BEHALF_OF === 'true',
