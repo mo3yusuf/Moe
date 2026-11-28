@@ -1367,3 +1367,52 @@ test('sold out today: staff mark it, it comes back next Brisbane day; only the s
     assert.ok((await expectDenied(c, 'select public.restore_sold_out_items()')).error, 'server only');
   }
 }));
+
+test('end to end: sample restaurant → tagged video → feed (orderable) → order → restaurant alerted and accepts', () => tx(async (c) => {
+  const admin = await makeAdmin(c, 'demo-admin@example.com');
+  const stranger = await createUser(c, 'demo-stranger@example.com');
+  await as(c, stranger);
+  assert.equal((await expectDenied(c, 'select public.admin_create_demo_restaurant()')).error?.code, '42501', 'admins only');
+
+  await as(c, admin);
+  const rid = (await c.query('select public.admin_create_demo_restaurant() id')).rows[0].id;
+  assert.equal((await c.query('select public.admin_create_demo_restaurant() id')).rows[0].id, rid, 'running again returns the same restaurant');
+  await asSuperuser(c);
+  const r = (await c.query('select name, status from public.restaurants where id = $1', [rid])).rows[0];
+  assert.deepEqual([r.name, r.status], ['CRAVE Demo Kitchen', 'verified']);
+  assert.equal((await c.query(`select role from public.restaurant_members where restaurant_id = $1 and user_id = $2`, [rid, admin])).rows[0]?.role, 'owner');
+  const menu = (await c.query('select name, section from public.menu_items where restaurant_id = $1', [rid])).rows;
+  assert.ok(menu.length >= 9, `full menu (${menu.length} dishes)`);
+  const smash = (await c.query(`select id, price_cents from public.menu_items where restaurant_id = $1 and name = 'Double Smash Burger'`, [rid])).rows[0];
+  const groups = (await c.query(`select name, display_style, parent_option_id is not null as nested from public.menu_item_option_groups where menu_item_id = $1 order by sort_order`, [smash.id])).rows;
+  assert.deepEqual(groups.map((g) => g.name), ['Choose a side', 'Fries sauce', 'Extras', 'Remove ingredients']);
+  assert.equal(groups[1].nested, true);
+  assert.equal(groups[3].display_style, 'remove');
+  const loc = (await c.query('select id from public.restaurant_locations where restaurant_id = $1', [rid])).rows[0].id;
+  assert.equal((await c.query('select public.location_is_open($1) o', [loc])).rows[0].o, true, 'open now');
+
+  // The owner posts a video featuring the burger: their own tag is approved straight away.
+  const video = (await c.query(`insert into public.videos (uploader_id, source, restaurant_id, caption, duration_ms, status, storage_path, rights_attested_at)
+                                values ($1, 'restaurant', $2, 'Our Double Smash', 12000, 'pending_review', 'x/demo.mp4', now()) returning id`, [admin, rid])).rows[0].id;
+  await as(c, admin);
+  await c.query('insert into public.video_menu_items (video_id, menu_item_id, restaurant_id) values ($1, $2, $3)', [video, smash.id, rid]);
+  await asSuperuser(c);
+  assert.equal((await c.query('select status from public.video_menu_items where video_id = $1', [video])).rows[0].status, 'approved');
+  // Moderation publishes it (the API copies the file and sets the playback link).
+  await c.query(`update public.videos set status = 'published', published_at = now(), playback_url = 'https://example.com/demo.mp4' where id = $1`, [video]);
+
+  // In the feed for a nearby customer: linked to the burger and orderable → a right swipe opens its order page.
+  const feed = (await c.query(`select video_id, restaurant_name, menu_item_id, menu_item_name, orderable from public.feed_candidates(null, -27.4698, 153.0251, 30, 1000) where video_id = $1`, [video])).rows;
+  assert.equal(feed.length, 1, 'video is in the feed');
+  assert.deepEqual([feed[0].restaurant_name, feed[0].menu_item_id, feed[0].orderable], ['CRAVE Demo Kitchen', smash.id, true]);
+
+  // A customer orders it and pays; the restaurant is alerted and accepts.
+  const cust = await createUser(c, 'demo-customer@example.com');
+  await asSuperuser(c);
+  const q = quoteJson([{ menuItemId: smash.id, name: 'Double Smash Burger', unitPriceCents: smash.price_cents, quantity: 1, sourceVideoId: video }]);
+  const o = (await c.query(`select * from public.create_pending_order($1, $2, $3, 'Sam', null, null, $4, $5::jsonb, gen_random_uuid())`, [cust, rid, loc, video, q])).rows[0];
+  await c.query(`select public.confirm_order_payment($1, 'simulated', $2, $3, 0, true)`, [o.id, `sim_${o.id}`, o.total_cents]);
+  assert.equal((await c.query(`select count(*)::int n from public.notifications where user_id = $1 and type = 'new_order' and data ->> 'order_id' = $2`, [admin, o.id])).rows[0].n, 1, 'restaurant alerted');
+  await as(c, admin);
+  assert.equal((await c.query('select status from public.restaurant_accept_order($1, 15)', [o.id])).rows[0].status, 'accepted');
+}));
